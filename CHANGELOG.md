@@ -114,8 +114,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A role change or a password set by an admin ends every open session of the account for good, also when the change
   is undone later; every write checks the session version, the role and the account inside its own transaction.
-- An account change carries the session version its form loaded, so a stale form can no longer give back an admin
-  role another admin just removed.
+- An account change carries the edit version its form loaded (`DuzenlemeSurumu`, added by the
+  `AddAccountEditVersion` migration and raised by every edit of an account), so a stale form can give back neither an
+  admin role another admin just removed nor an e-mail address or phone number another admin just corrected; the
+  session version keeps ending sessions on a new role or password only.
+- Date decisions are made with the database's date read inside the write, after the car's lock was granted: whether
+  ending a rental cancels or returns it, a booking's first day and horizon, and a maintenance record's day limits. A
+  request that waited for the lock across midnight decides with the new day (tested on SQL Server with the database
+  clock moved past midnight while the request waits).
+- A failed sign-in is counted by one conditional `UPDATE` only while the account is unlocked by the database's clock
+  at the write and still has the checked password and session version; the lock's end is computed there. Failures
+  arriving together lock the account once, and failures held up behind an admin's password reset are not counted
+  (tested on SQL Server with six failures held at a barrier).
+- The booking screen's pick-up day limits and quotes and the newest model year of a car follow the database's clock
+  instead of the workstation's.
 - The account's own password change checks the session first, raises the session version and so ends every other
   session of the account, for example one opened with a stolen password; the window that changed it keeps working.
 - Ending a rental takes the car's lock before it checks the acting account, in the same order as every other car

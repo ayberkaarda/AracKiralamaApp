@@ -116,8 +116,20 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 - Rol değişikliği veya yöneticinin belirlediği şifre, hesabın tüm açık oturumlarını değişiklik sonradan geri alınsa
   bile kalıcı olarak sonlandırır; her yazma işlemi oturum sürümünü, rolü ve hesabı kendi transaction'ı içinde denetler.
-- Hesap değişikliği formunun yüklediği oturum sürümünü taşır; böylece eski bir form, başka bir yöneticinin az önce
-  aldığı yönetici rolünü geri veremez.
+- Hesap değişikliği formunun yüklediği düzenleme sürümünü taşır (`AddAccountEditVersion` migration'ının eklediği ve
+  hesabın her düzenlenişinde artan `DuzenlemeSurumu`); böylece eski bir form, başka bir yöneticinin az önce aldığı
+  yönetici rolünü de, az önce düzelttiği e-posta adresini veya telefon numarasını da geri getiremez. Oturum sürümü
+  yalnızca yeni rol veya şifrede oturumları kapatmaya devam eder.
+- Tarihe bağlı kararlar, yazmanın içinde aracın kilidi alındıktan sonra okunan veritabanı tarihiyle verilir:
+  kiralamayı sonlandırmanın iptal mi iade mi olduğu, kiralamanın ilk günü ve ufku, bakım kaydının gün sınırları. Kilidi
+  gece yarısını geçerek bekleyen bir istek yeni günle karar verir (SQL Server'da, istek beklerken veritabanı saati gece
+  yarısını geçirilerek test edilir).
+- Hatalı giriş, yalnızca hesap yazma anında veritabanının saatine göre kilitsizken ve denetlenen şifre ile oturum
+  sürümü hâlâ geçerliyken tek bir koşullu `UPDATE` ile sayılır; kilidin bitişi de orada hesaplanır. Aynı anda gelen
+  hatalı girişler hesabı bir kez kilitler, yöneticinin şifre sıfırlamasının arkasında kalan hatalı girişler sayılmaz
+  (SQL Server'da bir bariyerde tutulan altı hatalı girişle test edilir).
+- Kiralama ekranının alış günü sınırları ve tutar hesapları ile aracın en yeni model yılı, bilgisayarın saatine değil
+  veritabanının saatine göre belirlenir.
 - Hesabın kendi şifre değişikliği önce oturumu denetler, oturum sürümünü artırır ve böylece hesabın diğer tüm
   oturumlarını (örneğin çalınan şifreyle açılmış olanı) kapatır; şifreyi değiştiren pencere çalışmaya devam eder.
 - Kiralamayı sonlandırma, işlemi yapan hesabı denetlemeden önce aracın kilidini alır (diğer araç yazmalarıyla aynı
