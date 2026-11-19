@@ -22,6 +22,8 @@
     <!-- Original artwork, rasterized from assets/logo.svg by tools/Screenshots (icons command). -->
     <EmbeddedResource Include="..\..\assets\logo-256.png" Link="Assets\logo-256.png" LogicalName="AracKiralama.UI.Assets.logo-256.png" />
     <EmbeddedResource Include="..\..\assets\app.ico" Link="Assets\app.ico" LogicalName="AracKiralama.UI.Assets.app.ico" />
+    <!-- Car photographs from Wikimedia Commons under free licenses; every file is credited in docs/CREDITS.md. -->
+    <EmbeddedResource Include="Assets\Cars\*.jpg" LogicalName="AracKiralama.UI.Assets.Cars.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

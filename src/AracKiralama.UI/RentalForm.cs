@@ -24,7 +24,7 @@ namespace AracKiralama.UI
         private int _days;
         private bool _quoteRefused;
 
-        private readonly VehiclePicture picCar = new() { Name = nameof(picCar), Height = 170 };
+        private readonly VehiclePicture picCar = new() { Name = nameof(picCar), Height = 186 };
         private readonly Label lblCarName = new() { Name = nameof(lblCarName), Text = "Araç yükleniyor…", AutoSize = true, UseMnemonic = false };
         private readonly PlateChip lblPlate = new() { Name = nameof(lblPlate) };
         private readonly Label lblBrand = Value(nameof(lblBrand));
@@ -130,7 +130,7 @@ namespace AracKiralama.UI
             lblFuelType.Text = car.FuelType;
             lblColor.Text = car.Color;
             lblDailyPrice.Text = DisplayFormat.Money(car.DailyPrice) + " / gün";
-            picCar.ShowCar(car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
+            picCar.ShowCar(car.Brand, car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
             lblBooked.Text = DescribeBooked(booked);
             btnConfirm.Enabled = true;
             UpdateTotal();

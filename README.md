@@ -18,7 +18,8 @@ layers; database access uses EF Core, and the database is created, migrated or u
 
 - ✅ **Own visual identity**: asphalt graphite and signal orange, a road and location pin logo, headings, prices,
   plates and calendar days in Bahnschrift (the DIN-style road-sign face of Windows) and running text in Segoe UI.
-  Cars without a picture are drawn in code in their own colour; no photograph, brand or real model is used.
+  Common car models show a bundled photograph from Wikimedia Commons (see [Image credits](#image-credits)); any
+  other car is drawn in code in its own colour.
 - ✅ **Light, dark and high contrast**: `Appearance:Theme` chooses `Light` (default), `Dark` or `System` (follows the
   Windows app mode). High contrast always wins and uses the Windows system colours with native controls; selected
   and hovered items keep HighlightText. Open screens follow a change of high contrast or the app mode while the
@@ -34,8 +35,12 @@ layers; database access uses EF Core, and the database is created, migrated or u
   type, colour and daily price.
 - ✅ **Filters** by brand ("Marka"), gearbox ("Vites Tipi") and fuel type ("Yakıt Tipi"); filling the filter lists never
   starts a load by itself, and only the answer to the latest filter is shown.
-- ✅ **Car pictures** are loaded in the background from public http or https addresses only; anything else shows the
-  application's own drawing of the car in its colour.
+- ✅ **Car pictures**: twelve common models (Renault Clio, Fiat Egea, Toyota Corolla, Volkswagen Golf, Dacia Duster,
+  Peugeot 2008, Tesla Model 3, Fiat 500, Ford Transit Custom, Volkswagen Touran, Mazda MX-5, Fiat Doblò) show a
+  bundled photograph, matched by make and model ("Renault" + "Clio 1.0 TCe" matches the Clio). The photograph shows
+  the model, not the car itself. A car's own picture address is loaded in the background from public http or https
+  addresses only and replaces it; every other car shows the application's own drawing in its colour. Nothing is
+  loaded from the web for the bundled photographs.
 
 ### Bookings, cancellations and returns
 
@@ -121,9 +126,9 @@ layers; database access uses EF Core, and the database is created, migrated or u
 
 ## 🖼️ Screenshots
 
-The screens are drawn offscreen from an invented fleet (made-up brands and models, demonstration plates with the
-province code 00 that no plate uses, sample accounts on example.com), so they show no real data, brand or photograph;
-every car is the application's own drawing. Each image links to its 2x version. To draw them again:
+The screens are drawn offscreen from a sample fleet (common real models with their bundled photographs,
+demonstration plates with the province code 00 that no plate uses, sample accounts on example.com), so they show no
+real customer or company data. Each image links to its 2x version. To draw them again:
 `dotnet run --project tools/Screenshots -c Release -- screenshots`.
 
 | | |
@@ -184,17 +189,18 @@ AracKiralamaApp/
 │   ├── AracKiralama.Domain/     # Entities (User, Car, Rental, SetupKey) and repository contracts
 │   ├── AracKiralama.Business/   # Auth, setup, car, rental and account services, prices, Security/ (PBKDF2, lockout, setup keys), Validation/ (FluentValidation), Auditing/
 │   ├── AracKiralama.Data/       # EF Core DbContext, configurations, Persistence/Migrations/, legacy upgrade, car locks, database clock, demo data, repositories
-│   └── AracKiralama.UI/         # WinForms screens, Theming/ (palettes, fonts, themed controls, vehicle art), Infrastructure/ (screen frame, errors, logging, dialogs, write guard, picture loader), Program.cs (composition root)
+│   └── AracKiralama.UI/         # WinForms screens, Theming/ (palettes, fonts, themed controls, vehicle art), Infrastructure/ (screen frame, errors, logging, dialogs, write guard, picture loader, bundled car photographs), Assets/Cars/ (car photographs), Program.cs (composition root)
 ├── tests/
 │   ├── AracKiralama.Business.Tests/  # Validators, audit codes, hashing, lockout, booking rules, prices and ownership (Moq)
 │   ├── AracKiralama.Data.Tests/      # Services on SQLite; booking races, setup keys, the restricted login and the legacy upgrade on SQL Server
 │   └── AracKiralama.UI.Tests/        # Screens, layout, themes, configuration, errors, logs, pictures, focus and write guards (no windows shown)
-├── tools/Screenshots/           # Icon and README screenshots, drawn offscreen with an invented fleet
+├── tools/Screenshots/           # Icon and README screenshots, drawn offscreen with a sample fleet
 ├── screenshots/                 # README images at 1x and 2x
 ├── assets/                      # Original logo (logo.svg) with its icon and 256 px raster
 ├── docs/
 │   ├── issue-setup-key.sql      # Setup key, run by the database owner
 │   ├── grant-app-login.sql      # Rights of the application's own login
+│   ├── CREDITS.md               # Authors and licenses of the car photographs
 │   └── THREAT_MODEL.md          # Threat model
 ├── .github/workflows/ci.yml     # Build, test, SQL Server and release workflow
 ├── CHANGELOG.md
@@ -361,8 +367,9 @@ contains the plain text passwords.
 ### 5. Demo mode
 
 Demo mode is opt-in and off by default. The environment variable `ARAC_DEMO=1` (or `true`), or
-`"Seed": { "Demo": true }` in `appsettings.json`, adds five fictional cars (plates starting with `00`) only to a
-completely empty database. Demo mode creates **no account**: the first admin is created through the first-run setup
+`"Seed": { "Demo": true }` in `appsettings.json`, adds five sample cars of common models (Renault Clio, Fiat Egea,
+Ford Transit Custom, Fiat 500 and Tesla Model 3, with demonstration plates starting with `00`) only to a completely
+empty database. Demo mode creates **no account**: the first admin is created through the first-run setup
 as usual.
 
 ### 6. Logs
@@ -413,7 +420,7 @@ dotnet test -c Release
 |---|---|---|
 | `tests/AracKiralama.Business.Tests` | Unit | Validator limits and message order (user name 3/32, password 8/64, e-mail, phone, car fields, plates, rental days and dates), kept legacy values, audit codes, PBKDF2 and format upgrade, lockout, booking and price rules, ownership and admin checks with strict Moq mocks, session versions, maintenance input, calendar states, revenue sums and limits, formula-safe CSV, contract encoding and CSP |
 | `tests/AracKiralama.Data.Tests` | Integration | Services and repositories on SQLite in-memory (overlap boundaries, shortest and longest rental, booking horizon, cancel or return by day, IDOR answers, lockout length, demoted sessions, refused input writes nothing); maintenance blocks and stale versions, calendar, revenue and contract owner checks, sessions ended by role or password changes; booking, lockout, maintenance and stale-save races, a busy car lock under a short command timeout, setup keys and every new feature under the restricted login and the legacy upgrade on SQL Server |
-| `tests/AracKiralama.UI.Tests` | Unit | Every screen inside working areas of 1024x600, 1366x768 and 1920x1040 at text sizes 1 to 2 with long names (no clipping, no overlaps, header and footer in view), themed controls, tab order, inline messages, palette contrast, high contrast with the system colours and its switch while screens are open, card and calendar layout, vehicle art, example configuration, error messages, log content and retention, picture address checks, focus after unlock, write guards, latest-wins loading of calendar months and reports, single maintenance and contract saves, stale-save reloads, font-sized calendar cells, neutral branding |
+| `tests/AracKiralama.UI.Tests` | Unit | Every screen inside working areas of 1024x600, 1366x768 and 1920x1040 at text sizes 1 to 2 with long names (no clipping, no overlaps, header and footer in view), themed controls, tab order, inline messages, palette contrast, high contrast with the system colours and its switch while screens are open, card and calendar layout, vehicle art, bundled car photographs (credited, size-limited, matched by make and model, drawn in every palette), example configuration, error messages, log content and retention, picture address checks, focus after unlock, write guards, latest-wins loading of calendar months and reports, single maintenance and contract saves, stale-save reloads, font-sized calendar cells, neutral branding |
 
 The SQL Server tests use throw-away databases on the server in `ARAC_TEST_SQLSERVER` (default: local SQL Express
 with Windows authentication). They are skipped when `ARAC_SKIP_SQL_TESTS=1` is set or no server is reachable; with
@@ -439,7 +446,8 @@ them and replace every message box, so no window opens.
    `ARAC_REQUIRE_SQL_TESTS=1`
 3. **release** (only on `v*` tags): the tag name is passed through an environment variable and checked against
    `^v[A-Za-z0-9._-]+$`; a framework-dependent win-x64 build is then published and uploaded as the workflow
-   artifact `AracKiralama-<tag>-win-x64.zip`, together with the READMEs, the changelogs and `docs/*.sql`
+   artifact `AracKiralama-<tag>-win-x64.zip`, together with the READMEs, the changelogs, the license, `docs/*.sql`
+   and the image credits (`docs/CREDITS.md`)
 
 To produce the same build locally:
 
@@ -479,6 +487,16 @@ The target machine needs the .NET 10 Desktop Runtime. Put `appsettings.json` nex
 
 Feel free to get in touch with questions about the project, or send a pull request.
 
+## Image credits
+
+The car photographs come from Wikimedia Commons under CC0, CC BY or CC BY-SA licenses; [docs/CREDITS.md](docs/CREDITS.md)
+lists the author, license, source page and changes of each one. They are not covered by the MIT License of the code:
+each photograph keeps its own license.
+
+This project is not affiliated with or endorsed by any vehicle manufacturer; car makes and model names are used for
+identification only.
+
 ## License
 
-Released under the [MIT License](LICENSE).
+The code is released under the [MIT License](LICENSE). The car photographs keep their own licenses (see
+[Image credits](#image-credits)).

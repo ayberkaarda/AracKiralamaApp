@@ -23,7 +23,7 @@ namespace AracKiralama.UI
         private readonly Label lblCarCount = FormLayout.Hint(string.Empty);
         private readonly ThemedButton btnRefresh = FormLayout.Button(nameof(btnRefresh), "Yenile", ButtonKind.Subtle, Glyphs.Refresh);
         private readonly ThemedListBox lstCars = new() { Name = nameof(lstCars), AccessibleName = "Araçlar", EmptyText = "Henüz araç yok. Sağdaki formdan ilk aracı ekleyin." };
-        private readonly VehiclePicture picCar = new() { Name = nameof(picCar), Size = new Size(132, 80) };
+        private readonly VehiclePicture picCar = new() { Name = nameof(picCar), Size = new Size(152, 80) };
         private readonly Label lblSelection = FormLayout.Text(nameof(lblSelection));
         private readonly Label lblSelectionDetail = FormLayout.Hint(string.Empty);
         private readonly TextBox txtBrand = new() { Name = nameof(txtBrand), MaxLength = InputRules.BrandMaxLength };
@@ -199,7 +199,7 @@ namespace AracKiralama.UI
             txtDailyPrice.Text = DisplayFormat.MoneyInput(car.DailyPrice);
             chkListed.Checked = car.IsListed;
             txtImageUrl.Text = car.ImageUrl ?? string.Empty;
-            picCar.ShowCar(car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
+            picCar.ShowCar(car.Brand, car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
             lblSelection.Text = car.Brand + " " + car.Model;
             lblSelectionDetail.Text = string.Create(CultureInfo.CurrentCulture, $"Araç no {car.Id} · {CarItem.Describe(car)}");
             btnUpdateCar.Enabled = true;
@@ -448,7 +448,7 @@ namespace AracKiralama.UI
             ShowChoice(cmbTransmission, InputRules.Transmissions, null);
             ShowChoice(cmbFuelType, InputRules.FuelTypes, null);
             chkListed.Checked = true;
-            picCar.ShowCar(null, null, null, "Yeni araç");
+            picCar.ShowCar(null, null, null, null, "Yeni araç");
             lblSelection.Text = "Yeni araç";
             lblSelectionDetail.Text = "Bilgileri girip \"Araç Ekle\" ile kaydedin.";
             btnUpdateCar.Enabled = false;

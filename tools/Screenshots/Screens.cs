@@ -4,7 +4,7 @@ using AracKiralama.UI.Infrastructure;
 
 namespace AracKiralama.Screenshots;
 
-/// <summary>The screens shown in the README, each prepared with the invented fleet as a customer or an admin would see it.</summary>
+/// <summary>The screens shown in the README, each prepared with the sample fleet as a customer or an admin would see it.</summary>
 internal static class Screens
 {
     /// <summary>File name (kebab-case, without extension) and how to build the screen.</summary>
@@ -29,7 +29,7 @@ internal static class Screens
     /// <summary>The maintenance log with the active record picked.</summary>
     private static MaintenanceForm Maintenance(SyntheticFleet fleet)
     {
-        var form = new MaintenanceForm(fleet, fleet.Admin, 3, "Doruk Yayla (00 DR 330)");
+        var form = new MaintenanceForm(fleet, fleet.Admin, 3, "Toyota Corolla (00 TC 330)");
         Run(form.LoadRecordsAsync());
         Find<ListBox>(form, "lstRecords").SelectedIndex = 0;
         return form;
@@ -54,7 +54,7 @@ internal static class Screens
     /// <summary>A month with past, free, booked and maintenance days, as a customer sees it before booking.</summary>
     private static AvailabilityCalendarForm Calendar(SyntheticFleet fleet)
     {
-        var form = new AvailabilityCalendarForm(fleet, fleet.Customer, 3, "Doruk Yayla (00 DR 330)");
+        var form = new AvailabilityCalendarForm(fleet, fleet.Customer, 3, "Toyota Corolla (00 TC 330)");
         Run(form.LoadMonthAsync(null));
         return form;
     }
@@ -96,7 +96,7 @@ internal static class Screens
     {
         var form = new CarListForm(fleet, new UnusedFormFactory(), fleet.Customer);
         Run(form.RefreshAsync());
-        form.ShowStatus(UI.Theming.StatusKind.Success, "Kiralama kaydedildi: Doruk Yayla, 14.03.2026 - 17.03.2026, 5.670,00 TL. Kiralamalarım ekranından sözleşmeyi kaydedebilirsiniz.");
+        form.ShowStatus(UI.Theming.StatusKind.Success, "Kiralama kaydedildi: Toyota Corolla, 14.03.2026 - 17.03.2026, 5.670,00 TL. Kiralamalarım ekranından sözleşmeyi kaydedebilirsiniz.");
         return form;
     }
 

@@ -9,6 +9,17 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Eklenenler
 
+- Gerçek araç fotoğrafları: on iki yaygın model (Renault Clio, Fiat Egea, Toyota Corolla, Volkswagen Golf, Dacia
+  Duster, Peugeot 2008, Tesla Model 3, Fiat 500, Ford Transit Custom, Volkswagen Touran, Mazda MX-5, Fiat Doblò) araç
+  kartlarında, kiralama ekranında, kiralama kartlarında ve yönetim panelinde Wikimedia Commons'tan bir fotoğrafla
+  gösterilir; eşleşme marka ve modele göre yapılır. Fotoğraflar (CC0 ve CC BY-SA, 640 piksel genişlikte, toplam
+  yaklaşık 650 KB) uygulamaya gömülüdür ve hiçbir zaman indirilmez; aracın kendi resim adresi yine onların yerine
+  geçer, diğer araçlar çizimle kalır. `docs/CREDITS.md` her birinin yazarını, lisansını, kaynağını ve yapılan
+  değişiklikleri listeler; README'ler bu dosyaya bağlantı verir ve projenin hiçbir araç üreticisiyle bağlantılı
+  olmadığını belirtir. Sürüm arşivi `docs/CREDITS.md` ve lisansı da içerir.
+- Arayüz testleri: birlikte gelen her fotoğraf `docs/CREDITS.md` içinde yer alır, boyut sınırlarını aşmaz ve
+  katalogdadır; marka ve modeller büyük/küçük harf, aksan, noktalama ve donanım adlarından bağımsız eşleşir; fotoğraf
+  açık, koyu ve yüksek karşıtlık paletlerinde çizilir ve bilinmeyen modeller çizimle kalır.
 - Yeni tasarım: asfalt grafit ve sinyal turuncusundan oluşan kendi görsel kimliği, yol ve konum iğnesi logosu
   (`assets/logo.svg`; `app.ico` ve `logo-256.png` olarak rasterleştirilir), başlıklar, ücretler, plakalar ve takvim
   günleri için Bahnschrift ve başlık, pencere içi ileti şeridi, içerik ve alt bilgiden oluşan tek bir çerçeve üzerinde
@@ -22,8 +33,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
   renk tonuyla gösteren, bugünü halkayla işaretleyen takvim.
 - Sonuçlar ve retler ileti kutusu yerine pencerenin içinde görünür; sorular temalı bir ileti penceresinde sorulur.
   Reddedilen alanlar kırmızı bir çerçeve ve erişilebilir açıklama olarak kendi iletisini alır.
-- `tools/Screenshots`: simge ve 1x ile 2x README ekran görüntüleri, hayali bir filoyla pencere açılmadan çizilir; README
-  on dört ekran gösterir.
+- `tools/Screenshots`: simge ve 1x ile 2x README ekran görüntüleri, yaygın modellerden ve birlikte gelen
+  fotoğraflarından oluşan örnek bir filoyla pencere açılmadan çizilir; README on dört ekran gösterir.
 - Arayüz testleri: her ekranın 1024x600, 1366x768 ve 1920x1040 çalışma alanlarında, 1 ile 2 arası yazı boyutlarında
   ve uzun adlarla sığması, temalı denetimler, sekme sırası, pencere içi iletiler, palet karşıtlığı ve kimliği, yüksek
   karşıtlık ve ekranlar açıkken geçişi, kart ve takvim yerleşimi ve araç çizimi.
@@ -68,6 +79,9 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Değişenler
 
+- İsteğe bağlı demo verisi, uydurma markalar yerine ekran görüntülerindekine benzer araçlar ekler (Renault Clio, Fiat
+  Egea, Ford Transit Custom, Fiat 500 ve Tesla Model 3); yine hiçbir hesap eklemez. Araç resimleri fotoğraflara uymak
+  için biraz daha geniştir (yaklaşık 1,9 : 1).
 - Uygulama monitör başına DPI uyumludur; pencereler içeriğe göre boyutlanır, ekranın çalışma alanından büyük açılmaz
   ve küçük ekranda gövdeleri kayar.
 - Hesap oluşturma, ilk yönetici, şifre değiştirme ve kiralama pencerelerini kapatır, sonucu onları açan ekran söyler;

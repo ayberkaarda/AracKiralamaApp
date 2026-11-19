@@ -2,7 +2,7 @@
 
   <!--
     Console tool for the application icon and the README images. It never shows a window:
-    forms are created with in-memory services and an invented fleet and drawn with Control.DrawToBitmap.
+    forms are created with in-memory services and a sample fleet and drawn with Control.DrawToBitmap.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
