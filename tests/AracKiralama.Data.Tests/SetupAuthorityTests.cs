@@ -93,14 +93,16 @@ public sealed class SetupAuthorityTests
                  + HAS_PERMS_BY_NAME(N'dbo.Kiralama', N'OBJECT', N'UPDATE')
                  + HAS_PERMS_BY_NAME(N'dbo.Araclar', N'OBJECT', N'DELETE')
                  + HAS_PERMS_BY_NAME(N'dbo.Kullanicilar', N'OBJECT', N'UPDATE')
+                 + HAS_PERMS_BY_NAME(N'dbo.AracBakim', N'OBJECT', N'UPDATE')
                  + HAS_PERMS_BY_NAME(N'dbo.KurulumAnahtarlari', N'OBJECT', N'SELECT')
                  + HAS_PERMS_BY_NAME(N'dbo.KurulumAnahtarlari', N'OBJECT', N'UPDATE', N'Tuketildi', N'COLUMN')
                  + 10 * HAS_PERMS_BY_NAME(N'dbo.Kiralama', N'OBJECT', N'DELETE')
+                 + 10 * HAS_PERMS_BY_NAME(N'dbo.AracBakim', N'OBJECT', N'DELETE')
                  + 10 * HAS_PERMS_BY_NAME(N'dbo.KurulumAnahtarlari', N'OBJECT', N'INSERT')
                  + 10 * HAS_PERMS_BY_NAME(N'dbo.KurulumAnahtarlari', N'OBJECT', N'UPDATE', N'SonKullanma', N'COLUMN');
             REVERT;
             """;
-        Assert.Equal(6, await database.ScalarAsync(Rights, Ct));
+        Assert.Equal(7, await database.ScalarAsync(Rights, Ct));
     }
 
     /// <summary>
@@ -146,14 +148,25 @@ public sealed class SetupAuthorityTests
         var session = await app.GetRequiredService<IAuthService>().SignInAsync("musteri", "Yeni.Sifre12", Ct);
         var receipt = await RentAsync(app, session, carId, startOffset: 1, days: 2);
         Assert.Equal(RentalEnding.Cancelled, await app.GetRequiredService<IRentalService>().EndAsync(session, receipt.RentalId, Ct));
+        var contract = await app.GetRequiredService<IContractService>().CreateAsync(session, receipt.RentalId, Ct);
+        Assert.NotEmpty(contract.Content);
+        var maintenance = app.GetRequiredService<IMaintenanceService>();
+        var today = app.GetRequiredService<IRentalService>().Today;
+        var recordId = await maintenance.AddAsync(admin, carId, new MaintenanceInput(MaintenanceKind.Maintenance, "Bakım", today.AddDays(1), today.AddDays(3), "100"), Ct);
+        await maintenance.UpdateAsync(admin, recordId, 1, new MaintenanceInput(MaintenanceKind.Damage, "Hasar", today.AddDays(1), today.AddDays(2), null), Ct);
+        Assert.Equal(DayState.Maintenance, (await app.GetRequiredService<IAvailabilityService>().GetCalendarAsync(session, carId, today.AddDays(1), Ct)).Days.Single(d => d.Date == today.AddDays(1)).State);
+        await maintenance.CancelAsync(admin, recordId, 2, Ct);
+        var report = await app.GetRequiredService<IReportService>().GetRevenueAsync(admin, today, today.AddDays(10), RevenueGrouping.Day, Ct);
+        Assert.Equal(0, report.Total.Rentals);
         await Assert.ThrowsAsync<BusinessRuleException>(() => app.GetRequiredService<IAuthService>().SignInAsync("musteri", "Yanlis.Sifre1", Ct));
         Assert.Equal(1, await database.ScalarAsync("SELECT BasarisizGiris FROM dbo.Kullanicilar WHERE KullaniciAdi = N'musteri'", Ct));
 
-        // Still refused under the same impersonation: rental deletion, key creation or extension, schema changes.
+        // Still refused under the same impersonation: rental or maintenance deletion, key creation or extension, schema changes.
         // 229 object, 230 column, 1088 ALTER on an object the user may not change.
         string[] forbidden =
         [
             "DELETE dbo.Kiralama",
+            "DELETE dbo.AracBakim",
             "INSERT dbo.KurulumAnahtarlari (AnahtarOzeti, Olusturma, SonKullanma, Tuketildi) VALUES (HASHBYTES('SHA2_256', 'X'), SYSUTCDATETIME(), DATEADD(DAY, 1, SYSUTCDATETIME()), 0)",
             "UPDATE dbo.KurulumAnahtarlari SET SonKullanma = DATEADD(YEAR, 1, SonKullanma)",
             "ALTER TABLE dbo.Araclar ADD Deneme int NULL",
