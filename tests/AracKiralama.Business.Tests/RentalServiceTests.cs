@@ -16,6 +16,7 @@ public sealed class RentalServiceTests
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 3, 2, 10, 0, 0, TimeSpan.Zero));
     private readonly RecordingAuditLog _audit = new();
     private RentalPolicy _policy = new() { MinRentalDays = 1, MaxRentalDays = 30, MaxAdvanceDays = 60 };
+    private IDatabaseClock? _databaseClock;
 
     public RentalServiceTests()
     {
@@ -167,6 +168,26 @@ public sealed class RentalServiceTests
         _rentals.Verify(r => r.GetActiveAsync(Sessions.User.UserId, CarFilter.None, It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    /// <summary>
+    /// The computer's clock is two days behind the database's. A booking from "tomorrow" by the
+    /// computer's clock starts in the past by the database's and is refused; a rental that started
+    /// "today" by the database's clock is ended with that day, so it is returned, not cancelled.
+    /// </summary>
+    [Fact]
+    public async Task Operations_DecideWithTheDatabaseClock()
+    {
+        _databaseClock = new TestDatabaseClock(new FakeTimeProvider(new DateTimeOffset(2026, 3, 4, 10, 0, 0, TimeSpan.Zero)));
+        var service = Service();
+        var quote = service.Quote(3, 10m, Today.AddDays(1), 2);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => service.RentAsync(Sessions.User, quote, Ct));
+        Assert.Equal(RentalService.StartInPast, error.Message);
+
+        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), Today.AddDays(2), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EndRentalResult(EndRentalOutcome.Returned));
+        Assert.Equal(RentalEnding.Returned, await service.EndAsync(Sessions.User, 9, Ct));
+    }
+
     [Fact]
     public void IsUnderway_FromThePickUpDayOn()
     {
@@ -202,5 +223,5 @@ public sealed class RentalServiceTests
     private static RentalDetails Rental(DateOnly start) =>
         new(9, 3, "Anka", "Kent", "Otomatik", "Benzin", "00 DMO 001", null, 2, "ornek", start, start.AddDays(2), 20m, RentalStatus.Active);
 
-    private RentalService Service() => new(_rentals.Object, new AccessGuard(_users.Object, _audit), _time, _policy, _audit);
+    private RentalService Service() => new(_rentals.Object, new AccessGuard(_users.Object, _audit), _time, _databaseClock ?? new TestDatabaseClock(_time), _policy, _audit);
 }

@@ -51,7 +51,7 @@ public sealed class CarServiceTests
         var guard = new AccessGuard(_users.Object, _audit);
         var cars = Service();
         var accounts = new AccountService(_users.Object, new PasswordHasher(iterations: 1_000), guard, _audit);
-        var rentals = new RentalService(new Mock<IRentalRepository>(MockBehavior.Strict).Object, guard, _time, new RentalPolicy(), _audit);
+        var rentals = new RentalService(new Mock<IRentalRepository>(MockBehavior.Strict).Object, guard, _time, new TestDatabaseClock(_time), new RentalPolicy(), _audit);
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => cars.GetAllAsync(Sessions.Admin, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => cars.AddAsync(Sessions.Admin, Valid, Ct));

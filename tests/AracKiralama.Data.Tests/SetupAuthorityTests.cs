@@ -46,7 +46,8 @@ public sealed class SetupAuthorityTests
     public async Task OwnersKey_ExpiredByTheDatabaseClock_IsRefused()
     {
         await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
-        await using var provider = database.BuildServices();
+        var behind = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(database.Clock.GetUtcNow().AddDays(-1));
+        await using var provider = database.BuildServices(clock: behind);
         await provider.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
         await RegisterAsync(provider, "musteri", 1);
         var key = await database.IssueSetupKeyAsync(Ct);

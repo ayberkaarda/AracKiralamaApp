@@ -3,6 +3,7 @@ using AracKiralama.Data.Repositories;
 using AracKiralama.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AracKiralama.Data;
 
@@ -54,6 +55,8 @@ public static class DataServiceCollectionExtensions
         services.AddSingleton<IUserRepository, UserRepository>();
         services.AddSingleton<ICarRepository, CarRepository>();
         services.AddSingleton<IRentalRepository, RentalRepository>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IDatabaseClock, DatabaseClock>();
         return services;
     }
 }

@@ -34,7 +34,10 @@ public interface IRentalService
     /// <summary>The current settings (shortest and longest rental, booking horizon, discount).</summary>
     RentalPolicy Policy { get; }
 
-    /// <summary>Today's date on the local clock, the first day a rental may start.</summary>
+    /// <summary>
+    /// Today's date by this computer's clock, for the screens. A booking itself is checked against
+    /// today by the database's clock.
+    /// </summary>
     DateOnly Today { get; }
 
     /// <summary>
@@ -70,10 +73,17 @@ public interface IRentalService
     Task<RentalEnding> EndAsync(UserSession session, int rentalId, CancellationToken cancellationToken = default);
 }
 
+/// <remarks>
+/// <see cref="Today"/>, <see cref="Quote"/> and <see cref="IsUnderway"/> use this computer's clock and
+/// only prepare what a screen shows. The operations decide with today's date by the database's clock:
+/// a booking that starts before it is refused, and it decides whether ending a rental cancels or
+/// returns it, so a computer whose clock is wrong cannot book past days or cancel a rental under way.
+/// </remarks>
 internal sealed class RentalService(
     IRentalRepository rentals,
     AccessGuard access,
     TimeProvider timeProvider,
+    IDatabaseClock clock,
     RentalPolicy policy,
     IAuditLog audit) : IRentalService
 {
@@ -97,14 +107,16 @@ internal sealed class RentalService(
         CultureInfo.InvariantCulture,
         $"Kiralama en fazla {policy.MaxAdvanceDays} gün sonrası için yapılabilir.");
 
-    public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days)
+    public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days) =>
+        Quote(carId, dailyPrice, startDate, days, timeProvider.Today());
+
+    private RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days, DateOnly today)
     {
         if (days < policy.MinRentalDays || days > policy.MaxRentalDays)
         {
             throw new BusinessRuleException(DaysInvalid);
         }
 
-        var today = timeProvider.Today();
         if (startDate < today)
         {
             throw new BusinessRuleException(StartInPast);
@@ -136,8 +148,10 @@ internal sealed class RentalService(
 
         // The end day and the total are worked out again here; only the car, the start day, the days and
         // the price the customer saw come from the screen, and the repository refuses a price that has
-        // changed since and any range that shares a day with an active rental of the car.
-        var current = Quote(quote.CarId, quote.DailyPrice, quote.StartDate, quote.Days);
+        // changed since and any range that shares a day with an active rental of the car. The first
+        // allowed day is today by the database's clock.
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+        var current = Quote(quote.CarId, quote.DailyPrice, quote.StartDate, quote.Days, today);
         var result = await rentals.RentAsync(
             new RentalRequest(current.CarId, session.UserId, current.StartDate, current.EndDate, current.DailyPrice, current.Total),
             cancellationToken).ConfigureAwait(false);
@@ -163,7 +177,8 @@ internal sealed class RentalService(
     public async Task<IReadOnlyList<BookedRange>> GetBookedRangesAsync(UserSession session, int carId, CancellationToken cancellationToken = default)
     {
         await access.RequireActiveAsync(session, cancellationToken).ConfigureAwait(false);
-        return await rentals.GetBookedRangesAsync(carId, timeProvider.Today(), cancellationToken).ConfigureAwait(false);
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+        return await rentals.GetBookedRangesAsync(carId, today, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<RentalDetails>> GetMyActiveRentalsAsync(UserSession session, CancellationToken cancellationToken = default)
@@ -193,7 +208,8 @@ internal sealed class RentalService(
         // The repository checks the role again inside the write.
         var owner = await access.OwnerFilterAsync(session, cancellationToken).ConfigureAwait(false);
         var actor = new RentalActor(session.UserId, AsAdmin: owner is null);
-        var result = await access.WriteAsActorAsync(session, () => rentals.EndAsync(rentalId, actor, timeProvider.Today(), cancellationToken)).ConfigureAwait(false);
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+        var result = await access.WriteAsActorAsync(session, () => rentals.EndAsync(rentalId, actor, today, cancellationToken)).ConfigureAwait(false);
         if (result.Outcome == EndRentalOutcome.NotFound)
         {
             throw new BusinessRuleException(RentalNotFound);

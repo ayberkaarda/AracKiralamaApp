@@ -26,10 +26,14 @@ public interface IAuthService
         CancellationToken cancellationToken = default);
 }
 
+/// <remarks>
+/// Sign-in locks are set and checked with the database's clock, so a computer whose clock is ahead
+/// does not see another computer's lock as over, and one whose clock is behind does not extend it.
+/// </remarks>
 internal sealed class AuthService(
     IUserRepository users,
     IPasswordHasher passwordHasher,
-    TimeProvider timeProvider,
+    IDatabaseClock clock,
     IAuditLog audit) : IAuthService
 {
     internal const string InputRequired = "Lütfen kullanıcı adı ve şifrenizi girin.";
@@ -58,13 +62,15 @@ internal sealed class AuthService(
         }
 
         var account = await users.FindByUserNameAsync(name, cancellationToken).ConfigureAwait(false);
+
+        // Read for unknown accounts too, so they cost the same round trips as known ones.
+        var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         if (account is null)
         {
             passwordHasher.SimulateVerification(password);
             throw Refused();
         }
 
-        var now = timeProvider.GetUtcNow().UtcDateTime;
         if (account.LockoutEnd > now)
         {
             // Same answer and about the same cost as a wrong password; nothing is written, so the lock
@@ -180,7 +186,7 @@ internal sealed class AuthService(
 
         var role = AuditCodes.Of(session.Role);
         var account = await users.FindByIdAsync(session.UserId, cancellationToken).ConfigureAwait(false);
-        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         if (account is null || account.LockoutEnd > now || currentPassword.Length > PasswordPolicy.MaxLength)
         {
             passwordHasher.SimulateVerification(currentPassword);

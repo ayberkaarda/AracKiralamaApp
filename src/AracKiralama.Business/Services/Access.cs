@@ -82,7 +82,21 @@ internal sealed class AccessGuard(IUserRepository users, IAuditLog audit)
 
 internal static class Access
 {
-    /// <summary>Today's date on the local wall clock; rental days are local calendar days.</summary>
+    /// <summary>
+    /// Today's date by this computer's clock, in its time zone; rental days are local calendar days.
+    /// Only for what a screen shows before an operation: the operations decide with
+    /// <see cref="TodayAsync"/>.
+    /// </summary>
     public static DateOnly Today(this TimeProvider timeProvider) =>
         DateOnly.FromDateTime(timeProvider.GetLocalNow().DateTime);
+
+    /// <summary>
+    /// Today's date by the database's clock, in this computer's time zone: computers whose clocks are
+    /// wrong still agree on the day, as long as their time zone is set right.
+    /// </summary>
+    public static async Task<DateOnly> TodayAsync(this IDatabaseClock clock, TimeProvider timeProvider, CancellationToken cancellationToken)
+    {
+        var utc = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
+        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), timeProvider.LocalTimeZone));
+    }
 }

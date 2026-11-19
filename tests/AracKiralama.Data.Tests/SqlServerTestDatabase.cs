@@ -22,11 +22,12 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
     private const string DefaultServer =
         @"Server=localhost\SQLEXPRESS;Integrated Security=True;TrustServerCertificate=True;Connect Timeout=5;";
 
-    private SqlServerTestDatabase(string server, string name)
+    private SqlServerTestDatabase(string server, string name, DateTimeOffset serverNow)
     {
         Server = server;
         Name = name;
         ConnectionString = new SqlConnectionStringBuilder(server) { InitialCatalog = name }.ConnectionString;
+        Clock = new FakeTimeProvider(serverNow);
     }
 
     public string Server { get; }
@@ -35,7 +36,11 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
 
     public string ConnectionString { get; }
 
-    public FakeTimeProvider Clock { get; } = new(TestServices.Start);
+    /// <summary>
+    /// The computer's clock of the services built here. It starts at the database server's UTC time, as
+    /// on a computer whose clock is right; dates and locks are decided by the database's clock.
+    /// </summary>
+    public FakeTimeProvider Clock { get; }
 
     /// <summary>
     /// Creates an empty database with the case-insensitive collation of the original
@@ -52,7 +57,19 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
     public static async Task<SqlServerTestDatabase> ReserveAsync(CancellationToken ct)
     {
         var server = await ResolveServerOrSkipAsync(ct);
-        return new SqlServerTestDatabase(server, "AracKiralamaTest_" + Guid.NewGuid().ToString("N"));
+        return new SqlServerTestDatabase(server, "AracKiralamaTest_" + Guid.NewGuid().ToString("N"), await ServerUtcNowAsync(server, ct));
+    }
+
+    /// <summary>The database server's UTC clock now.</summary>
+    public Task<DateTimeOffset> ServerUtcNowAsync(CancellationToken ct) => ServerUtcNowAsync(Server, ct);
+
+    private static async Task<DateTimeOffset> ServerUtcNowAsync(string connectionString, CancellationToken ct)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new SqlCommand("SELECT SYSUTCDATETIME()", connection);
+        var now = (DateTime)(await command.ExecuteScalarAsync(ct))!;
+        return new DateTimeOffset(DateTime.SpecifyKind(now, DateTimeKind.Utc));
     }
 
     /// <summary>
@@ -60,14 +77,16 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
     /// two providers behave like two application instances. <paramref name="demo"/> turns the
     /// demonstration data on, as ARAC_DEMO=1 does for the application.
     /// </summary>
-    /// <paramref name="configureContext"/> adds to the context options (for example interceptors) and
+    /// <paramref name="configureContext"/> adds to the context options (for example interceptors),
     /// <paramref name="pooling"/> off keeps its connections out of the shared pool (needed when they
-    /// impersonate another database user).
+    /// impersonate another database user) and <paramref name="clock"/> gives the instance a computer
+    /// clock of its own instead of <see cref="Clock"/>.
     public ServiceProvider BuildServices(
         Action<IServiceCollection>? configure = null,
         bool demo = false,
         Action<DbContextOptionsBuilder>? configureContext = null,
-        bool pooling = true)
+        bool pooling = true,
+        FakeTimeProvider? clock = null)
     {
         var connectionString = pooling
             ? ConnectionString
@@ -80,7 +99,7 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
                 configureContext?.Invoke(builder);
             },
             new DataAccessOptions { SeedDemoData = demo });
-        services.AddTestBusinessServices(Clock);
+        services.AddTestBusinessServices(clock ?? Clock);
         configure?.Invoke(services);
         return services.BuildServiceProvider();
     }

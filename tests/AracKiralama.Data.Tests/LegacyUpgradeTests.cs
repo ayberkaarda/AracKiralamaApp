@@ -74,7 +74,7 @@ public sealed class LegacyUpgradeTests
         SET IDENTITY_INSERT dbo.Araclar OFF;
         SET IDENTITY_INSERT dbo.Kiralama ON;
         INSERT dbo.Kiralama (KiralamaID, AracID, AlisTarihi, IadeTarihi, Ucret, KullaniciID) VALUES
-            (3, 4, '2026-03-01', '2026-03-06', 6500.00, 5);
+            (3, 4, DATEADD(DAY, -1, CAST(SYSUTCDATETIME() AS date)), DATEADD(DAY, 4, CAST(SYSUTCDATETIME() AS date)), 6500.00, 5);
         SET IDENTITY_INSERT dbo.Kiralama OFF;
         """;
 
@@ -113,7 +113,10 @@ public sealed class LegacyUpgradeTests
 
         // The rental is active and keeps its days.
         Assert.Equal(1, await database.ScalarAsync(
-            "SELECT COUNT(*) FROM dbo.Kiralama WHERE KiralamaID = 3 AND Durum = 0 AND AlisTarihi = '2026-03-01' AND IadeTarihi = '2026-03-06' AND GercekIadeTarihi IS NULL",
+            """
+            SELECT COUNT(*) FROM dbo.Kiralama WHERE KiralamaID = 3 AND Durum = 0 AND GercekIadeTarihi IS NULL
+               AND AlisTarihi = DATEADD(DAY, -1, CAST(SYSUTCDATETIME() AS date)) AND IadeTarihi = DATEADD(DAY, 4, CAST(SYSUTCDATETIME() AS date))
+            """,
             Ct));
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory WHERE MigrationId LIKE N'%_InitialCreate'", Ct));
 
@@ -160,7 +163,7 @@ public sealed class LegacyUpgradeTests
                 (N'Anka', N'Bakim', 2000, N'Manuel', N'Benzin', 1, N'Gri', N'00 BKM 01', 5, N'Bakımda'),
                 (N'Anka', NULL, 2000, N'Manuel', N'Benzin', 1, N'Gri', N'00 BKM 02', 5, N'Müsait');
             INSERT dbo.Kiralama (AracID, AlisTarihi, IadeTarihi, Ucret, KullaniciID) VALUES
-                (4, '2026-03-05', '2026-03-08', 40, 6),
+                (4, DATEADD(DAY, 2, CAST(SYSUTCDATETIME() AS date)), DATEADD(DAY, 5, CAST(SYSUTCDATETIME() AS date)), 40, 6),
                 (2, '2026-02-01', NULL, 10, 6),
                 (77, '2026-02-01', '2026-02-03', 10, 6);
             INSERT dbo.Musteriler (AdSoyad, TCNo) VALUES (N'Örnek Kişi', N'00000000000');
