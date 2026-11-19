@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Availability calendar of a car: every day of a month free, booked, in maintenance or past by the database's
+  today, with the state written in each cell (customers for listed cars, admins for any car).
+- Maintenance and damage log for admins (migration `AddMaintenanceLog`, table `AracBakim`): records block the car's
+  days, cannot take days of an active rental, are cancelled instead of deleted and are stamped with the database's
+  clock. A save from a form loaded before another admin's change is refused and the record is reloaded.
+- Revenue report for admins by month or day and by car, saved as formula-safe CSV.
+- Printable HTML rental contract for the renter and admins, HTML encoded under a strict Content-Security-Policy.
+- Session version of the accounts (migration `AddSessionVersion`, column `OturumSurumu`).
+- Tests: maintenance blocks and stale versions, calendar states, revenue sums and limits, CSV formula injection,
+  contract encoding, policy and owner check, ended sessions, and SQL Server races of bookings with maintenance,
+  of two admins saving one record, of a demoted admin's maintenance write, and a busy car lock under a short
+  command timeout; the restricted login runs every new feature.
 - Daily rolling file logs with Serilog under `%LOCALAPPDATA%\AracKiralama\logs`: files older than 30 days are
   deleted and at most 30 files are kept (tests check this with dated files). Error entries keep only exception
   types, HResult codes and method names.
@@ -29,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- A booking refused for taken days now says the car is not available on some of the days, the same for a rental or
+  maintenance. A car with maintenance history cannot be deleted either.
 - Errors are written to the log file instead of the trace output; the error dialogs are unchanged. Refused
   operations leave no log entry of their own.
 - README claims of the original application (.NET Framework, ADO.NET) were replaced with the current stack.
@@ -39,6 +53,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- A role change or a password set by an admin ends every open session of the account for good, also when the change
+  is undone later; every write checks the session version, the role and the account inside its own transaction.
+- A lock request always gets a command timeout longer than the lock's wait, so a busy lock ends with the busy
+  answer and nothing written, never with a command timeout.
+- The application's login gets no `DELETE` on the maintenance log (`docs/grant-app-login.sql`).
 - User names, e-mail addresses, phone numbers, passwords, setup keys, cars, plates, amounts and exception messages
   are never written to the log.
 

@@ -9,6 +9,19 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Eklenenler
 
+- Aracın müsaitlik takvimi: bir ayın her günü veritabanının bugününe göre boş, dolu, bakımda veya geçmiş; durum her
+  hücrede yazılı (müşteriler kiralamaya açık araçlar için, yöneticiler her araç için).
+- Yöneticiler için bakım ve hasar kayıtları (migration `AddMaintenanceLog`, `AracBakim` tablosu): kayıtlar aracın
+  günlerini kapatır, aktif bir kiralamanın günlerini alamaz, silinmez iptal edilir ve veritabanının saatiyle
+  damgalanır. Başka bir yöneticinin değişikliğinden önce yüklenmiş formun kaydı reddedilir ve kayıt yeniden yüklenir.
+- Yöneticiler için aylara veya günlere ve araçlara göre gelir raporu; formüle karşı güvenli CSV olarak kaydedilir.
+- Kiracı ve yöneticiler için yazdırılabilir HTML kiralama sözleşmesi; HTML kodlamalı ve sıkı bir
+  Content-Security-Policy altında.
+- Hesapların oturum sürümü (migration `AddSessionVersion`, `OturumSurumu` sütunu).
+- Testler: bakımın kapattığı günler ve eski sürümler, takvim durumları, gelir toplamları ve sınırları, CSV formül
+  enjeksiyonu, sözleşmenin kodlanması, politikası ve sahiplik denetimi, biten oturumlar; SQL Server üzerinde
+  kiralama ile bakımın, aynı kaydı kaydeden iki yöneticinin ve yetkisi alınan yöneticinin bakım yazmasının yarışları,
+  kısa komut zaman aşımında meşgul araç kilidi; kısıtlı oturum tüm yeni özellikleri çalıştırır.
 - `%LOCALAPPDATA%\AracKiralama\logs` altında Serilog ile günlük dönen log dosyaları: 30 günden eski dosyalar silinir
   ve en fazla 30 dosya tutulur (testler bunu tarihli dosyalarla denetler). Hata kayıtları yalnızca istisna
   türlerini, HResult kodlarını ve metot adlarını içerir.
@@ -29,6 +42,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Değişenler
 
+- Dolu günler yüzünden reddedilen kiralama artık aracın günlerin bir kısmında müsait olmadığını söyler; kiralama
+  veya bakım için aynı cevap. Bakım geçmişi olan araç da silinemez.
 - Hatalar izleme çıktısı yerine log dosyasına yazılır; hata pencereleri değişmedi. Reddedilen işlemler kendi
   başlarına log kaydı bırakmaz.
 - README'deki eski uygulamaya ait ifadeler (.NET Framework, ADO.NET) güncel teknolojilerle değiştirildi.
@@ -39,6 +54,11 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Güvenlik
 
+- Rol değişikliği veya yöneticinin belirlediği şifre, hesabın tüm açık oturumlarını değişiklik sonradan geri alınsa
+  bile kalıcı olarak sonlandırır; her yazma işlemi oturum sürümünü, rolü ve hesabı kendi transaction'ı içinde denetler.
+- Kilit isteği her zaman kilidin bekleme süresinden uzun bir komut zaman aşımı alır; meşgul bir kilit hiçbir şey
+  yazmadan meşgul cevabıyla biter, komut zaman aşımıyla değil.
+- Uygulamanın oturumu bakım kayıtlarında `DELETE` yetkisi almaz (`docs/grant-app-login.sql`).
 - Kullanıcı adları, e-posta adresleri, telefon numaraları, şifreler, kurulum anahtarları, araçlar, plakalar, tutarlar
   ve istisna mesajları hiçbir zaman loga yazılmaz.
 
