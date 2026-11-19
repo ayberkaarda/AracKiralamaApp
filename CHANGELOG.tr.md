@@ -18,6 +18,13 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 - Kiracı ve yöneticiler için yazdırılabilir HTML kiralama sözleşmesi; HTML kodlamalı ve sıkı bir
   Content-Security-Policy altında.
 - Hesapların oturum sürümü (migration `AddSessionVersion`, `OturumSurumu` sütunu).
+- Araçların sürümü (migration `AddCarVersion`, `Surum` sütunu): başka bir yöneticinin değişikliğinden önce yüklenmiş
+  bir formdan gelen araç değişikliği reddedilir ve araç yeniden yüklenir.
+- Testler: eski hesap ve araç formları (yazma içinde de karar verilen ve SQL Server'da yarışan), diğer oturumları
+  kapatan kendi şifre değişikliği, kiralama sonlandırmanın kilit sırası ve SQL Server'da kilitlenme kurbanı, beklenen
+  kilitten sonra damgalanan bakım zamanları, çakışan bakım kayıtları, korunan bakım girdisi, veritabanının ayı ve
+  rapor aralığı, hızlı takvim tıklamaları, müşterilerden gizlenen geçmiş günler, kullanıcı adı içermeyen sözleşme,
+  bugüne kadar sayılan gelir ve büyük yazı tipinde sözleşme düğmesi.
 - Testler: bakımın kapattığı günler ve eski sürümler, takvim durumları, gelir toplamları ve sınırları, CSV formül
   enjeksiyonu, sözleşmenin kodlanması, politikası ve sahiplik denetimi, biten oturumlar; SQL Server üzerinde
   kiralama ile bakımın, aynı kaydı kaydeden iki yöneticinin ve yetkisi alınan yöneticinin bakım yazmasının yarışları,
@@ -47,6 +54,17 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 - Hatalar izleme çıktısı yerine log dosyasına yazılır; hata pencereleri değişmedi. Reddedilen işlemler kendi
   başlarına log kaydı bırakmaz.
 - README'deki eski uygulamaya ait ifadeler (.NET Framework, ADO.NET) güncel teknolojilerle değiştirildi.
+- Gelir raporu yalnızca bugüne kadar teslim alınmış kiralamaları sayar (sonrakiler hâlâ ücretsiz iptal edilebilir),
+  aralığın yalnızca bir kısmını kapsayan ayı günleriyle adlandırır ve bunu ekranda ve CSV'de bir notla belirtir.
+- Takvim veritabanının bugününün ayıyla açılır; rapor bu aydan o güne kadarki aralıkla başlar. Müşteriler bugünden
+  önceki her günü geçmiş olarak görür. Ay düğmelerine hızlı tıklamalar toplanır.
+- Reddedilen bakım kaydı yöneticinin yazdıklarını korur; yalnızca başka bir yerde değiştirilen veya iptal edilen kayıt
+  yeniden yüklenir. Bir bakım kaydı aracın başka bir aktif kaydıyla gün paylaşamaz ve zamanları, aracın kilidinden
+  sonra yazıldığı anda alınır.
+- Kiralama sözleşmesi artık kullanıcı adını yazdırmaz; kiracı e-posta adresi ve telefonuyla belirtilir.
+- Kendi rolünü veya şifresini değiştiren yönetici, sonraki her tıklamada reddedilmek yerine bir açıklamayla oturumdan
+  çıkarılır.
+- Kiralama kartındaki sözleşme düğmesi boyutunu yazı tipinden alır; kart yüksek karşıtlıkta sistem renklerini korur.
 
 ### Kaldırılanlar
 
@@ -56,6 +74,13 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 - Rol değişikliği veya yöneticinin belirlediği şifre, hesabın tüm açık oturumlarını değişiklik sonradan geri alınsa
   bile kalıcı olarak sonlandırır; her yazma işlemi oturum sürümünü, rolü ve hesabı kendi transaction'ı içinde denetler.
+- Hesap değişikliği formunun yüklediği oturum sürümünü taşır; böylece eski bir form, başka bir yöneticinin az önce
+  aldığı yönetici rolünü geri veremez.
+- Hesabın kendi şifre değişikliği önce oturumu denetler, oturum sürümünü artırır ve böylece hesabın diğer tüm
+  oturumlarını (örneğin çalınan şifreyle açılmış olanı) kapatır; şifreyi değiştiren pencere çalışmaya devam eder.
+- Kiralamayı sonlandırma, işlemi yapan hesabı denetlemeden önce aracın kilidini alır (diğer araç yazmalarıyla aynı
+  sıra); kilitlenme kurbanı meşgul mesajıyla cevaplanır.
+- Oturum sürümü, oturum, işlem yapan hesap veya giriş verisi oluşturulan her yerde zorunlu bir değerdir.
 - Kilit isteği her zaman kilidin bekleme süresinden uzun bir komut zaman aşımı alır; meşgul bir kilit hiçbir şey
   yazmadan meşgul cevabıyla biter, komut zaman aşımıyla değil.
 - Uygulamanın oturumu bakım kayıtlarında `DELETE` yetkisi almaz (`docs/grant-app-login.sql`).
