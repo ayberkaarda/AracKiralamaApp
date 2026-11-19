@@ -11,12 +11,14 @@ internal static class RentalCards
     /// <summary>
     /// A card with the car's picture, the rental's days and price and the button that ends it: "İptal
     /// Et" before the pick-up day, "İade Al" once the rental is under way. With
-    /// <paramref name="showRenter"/> the account's name and id are shown (admin only).
+    /// <paramref name="showRenter"/> the account's name and id are shown (admin only). "Sözleşme" saves the
+    /// rental's printable contract.
     /// </summary>
-    public static (Panel Card, Button EndButton) Build(RentalDetails rental, bool underway, bool showRenter, Func<Task> end)
+    public static (Panel Card, Button EndButton, Button ContractButton) Build(RentalDetails rental, bool underway, bool showRenter, Func<Task> end, Func<Task> contract)
     {
         ArgumentNullException.ThrowIfNull(rental);
         ArgumentNullException.ThrowIfNull(end);
+        ArgumentNullException.ThrowIfNull(contract);
 
         var card = new Panel { Size = new Size(Width, Height), BackColor = Color.FromArgb(230, 230, 230) };
 
@@ -53,7 +55,19 @@ internal static class RentalCards
         };
         button.Click += async (_, _) => await end();
         card.Controls.Add(button);
-        return (card, button);
+
+        // System colours: the button keeps the look the theme, also high contrast, gives it.
+        var contractButton = new Button
+        {
+            Name = "btnContract",
+            Text = "Sözleşme",
+            Size = new Size(120, 40),
+            Location = new Point(290, 125),
+            UseVisualStyleBackColor = true,
+        };
+        contractButton.Click += async (_, _) => await contract();
+        card.Controls.Add(contractButton);
+        return (card, button, contractButton);
     }
 
     /// <summary>The question asked before a rental is ended.</summary>

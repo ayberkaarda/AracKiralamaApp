@@ -15,16 +15,20 @@ namespace AracKiralama.UI
         private readonly RequestSequence _loads = new();
         private readonly Panel _scrollPanel;
 
-        public ProfileForm(IRentalService rentals, IFormFactory forms, UserSession session)
+        public ProfileForm(IRentalService rentals, IContractService contracts, IFormFactory forms, UserSession session)
         {
             ArgumentNullException.ThrowIfNull(rentals);
+            ArgumentNullException.ThrowIfNull(contracts);
             ArgumentNullException.ThrowIfNull(forms);
             ArgumentNullException.ThrowIfNull(session);
 
             _rentals = rentals;
             _forms = forms;
             _session = session;
+            Contracts = new ContractExport(contracts, session);
             Prompts = new MessageBoxPrompts(this);
+            _end.HoldClosingOf(this);
+            Contracts.Operation.HoldClosingOf(this);
 
             InitializeComponent();
             Icon = AppAssets.Icon;
@@ -54,6 +58,19 @@ namespace AracKiralama.UI
 
         /// <summary>The end buttons shown now, for tests.</summary>
         internal IReadOnlyList<Button> EndButtons { get; private set; } = [];
+
+        /// <summary>The contract buttons shown now, for tests.</summary>
+        internal IReadOnlyList<Button> ContractButtons { get; private set; } = [];
+
+        /// <summary>Saves the rentals' contracts; its dialog and file writer are replaced in tests.</summary>
+        internal ContractExport Contracts { get; }
+
+        /// <summary>Saves the contract of one of the account's rentals; ignored while another save runs.</summary>
+        internal Task<bool> SaveContractAsync(RentalDetails rental)
+        {
+            ArgumentNullException.ThrowIfNull(rental);
+            return Contracts.SaveAsync(this, Prompts, rental.Id, ContractButtons);
+        }
 
         internal async Task LoadRentalsAsync()
         {
@@ -151,6 +168,7 @@ namespace AracKiralama.UI
         {
             ShownRentals = rentals;
             var buttons = new List<Button>();
+            var contractButtons = new List<Button>();
             _scrollPanel.SuspendLayout();
             try
             {
@@ -163,10 +181,11 @@ namespace AracKiralama.UI
                 foreach (var rental in rentals)
                 {
                     var current = rental;
-                    var (card, button) = RentalCards.Build(current, _rentals.IsUnderway(current), showRenter: false, () => EndAsync(current));
+                    var (card, button, contract) = RentalCards.Build(current, _rentals.IsUnderway(current), showRenter: false, () => EndAsync(current), () => SaveContractAsync(current));
                     card.Location = new Point(20, y);
                     _scrollPanel.Controls.Add(card);
                     buttons.Add(button);
+                    contractButtons.Add(contract);
                     y = card.Bottom + 20;
                 }
             }
@@ -176,6 +195,7 @@ namespace AracKiralama.UI
             }
 
             EndButtons = buttons;
+            ContractButtons = contractButtons;
         }
     }
 }

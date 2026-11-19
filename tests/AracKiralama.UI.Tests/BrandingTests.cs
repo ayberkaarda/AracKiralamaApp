@@ -35,10 +35,10 @@ public sealed class BrandingTests
             new RegisterForm(new PendingAuthService()),
             new ChangePasswordForm(new PendingAuthService(), Sessions.User),
             new CarListForm(cars, forms, Sessions.User),
-            new RentalForm(cars, rentals, Sessions.User, 1),
-            new ProfileForm(rentals, forms, Sessions.User),
+            new RentalForm(cars, rentals, new NoFormsFactory(), Sessions.User, 1),
+            new ProfileForm(rentals, new ControlledContractService(), forms, Sessions.User),
             new AdminPanel(cars, forms, Sessions.Admin),
-            new RentedCarsPanel(rentals, cars, Sessions.Admin),
+            new RentedCarsPanel(rentals, cars, new ControlledContractService(), Sessions.Admin),
         ];
 
         try

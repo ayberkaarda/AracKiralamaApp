@@ -17,16 +17,20 @@ namespace AracKiralama.UI
         private readonly Panel _listPanel;
         private CarFilter _applied = CarFilter.None;
 
-        public RentedCarsPanel(IRentalService rentals, ICarService cars, UserSession session)
+        public RentedCarsPanel(IRentalService rentals, ICarService cars, IContractService contracts, UserSession session)
         {
             ArgumentNullException.ThrowIfNull(rentals);
             ArgumentNullException.ThrowIfNull(cars);
+            ArgumentNullException.ThrowIfNull(contracts);
             ArgumentNullException.ThrowIfNull(session);
 
             _rentals = rentals;
             _cars = cars;
             _session = session;
+            Contracts = new ContractExport(contracts, session);
             Prompts = new MessageBoxPrompts(this);
+            _end.HoldClosingOf(this);
+            Contracts.Operation.HoldClosingOf(this);
 
             InitializeComponent();
             Icon = AppAssets.Icon;
@@ -49,6 +53,19 @@ namespace AracKiralama.UI
         internal IReadOnlyList<RentalDetails> ShownRentals { get; private set; } = [];
 
         internal IReadOnlyList<Button> EndButtons { get; private set; } = [];
+
+        /// <summary>The contract buttons shown now, for tests.</summary>
+        internal IReadOnlyList<Button> ContractButtons { get; private set; } = [];
+
+        /// <summary>Saves the rentals' contracts; its dialog and file writer are replaced in tests.</summary>
+        internal ContractExport Contracts { get; }
+
+        /// <summary>Saves the contract of a rental; ignored while another save runs.</summary>
+        internal Task<bool> SaveContractAsync(RentalDetails rental)
+        {
+            ArgumentNullException.ThrowIfNull(rental);
+            return Contracts.SaveAsync(this, Prompts, rental.Id, ContractButtons);
+        }
 
         internal CarFilterBoxes Filter => _filter;
 
@@ -160,6 +177,7 @@ namespace AracKiralama.UI
         {
             ShownRentals = rentals;
             var buttons = new List<Button>();
+            var contractButtons = new List<Button>();
             _listPanel.SuspendLayout();
             try
             {
@@ -172,10 +190,11 @@ namespace AracKiralama.UI
                 for (var i = 0; i < rentals.Count; i++)
                 {
                     var current = rentals[i];
-                    var (card, button) = RentalCards.Build(current, _rentals.IsUnderway(current), showRenter: true, () => EndAsync(current));
+                    var (card, button, contract) = RentalCards.Build(current, _rentals.IsUnderway(current), showRenter: true, () => EndAsync(current), () => SaveContractAsync(current));
                     card.Location = new Point(i % 2 == 0 ? 20 : 650, top + (i / 2 * (RentalCards.Height + 20)));
                     _listPanel.Controls.Add(card);
                     buttons.Add(button);
+                    contractButtons.Add(contract);
                 }
             }
             finally
@@ -184,6 +203,7 @@ namespace AracKiralama.UI
             }
 
             EndButtons = buttons;
+            ContractButtons = contractButtons;
         }
     }
 }

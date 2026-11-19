@@ -1,4 +1,5 @@
 using AracKiralama.Business;
+using AracKiralama.Business.Exports;
 using AracKiralama.Business.Services;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
@@ -205,4 +206,133 @@ internal static class Sessions
     public static UserSession User { get; } = new(2, "ornek", UserRole.User);
 
     public static UserSession Admin { get; } = new(1, "yonetici", UserRole.Admin);
+}
+
+/// <summary>Contract calls that stay pending until the test completes them.</summary>
+internal sealed class ControlledContractService : IContractService
+{
+    private TaskCompletionSource<ExportFile> _create = new();
+
+    public int Calls { get; private set; }
+
+    public Task<ExportFile> CreateAsync(UserSession session, int rentalId, CancellationToken cancellationToken = default)
+    {
+        Calls++;
+        _create = new TaskCompletionSource<ExportFile>();
+        return _create.Task;
+    }
+
+    public void Complete() => _create.SetResult(new ExportFile("kiralama-sozlesmesi-9.html", [1, 2, 3]));
+}
+
+/// <summary>Calendar months answered by the test, in any order.</summary>
+internal sealed class ControlledAvailabilityService : IAvailabilityService
+{
+    public List<(DateOnly Month, TaskCompletionSource<CarCalendar> Answer)> Requests { get; } = [];
+
+    public Task<CarCalendar> GetCalendarAsync(UserSession session, int carId, DateOnly month, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<CarCalendar>();
+        Requests.Add((month, answer));
+        return answer.Task;
+    }
+
+    /// <summary>A month whose days are free except <paramref name="states"/> from the first day on.</summary>
+    public static CarCalendar Calendar(DateOnly month, params DayState[] states)
+    {
+        var first = new DateOnly(month.Year, month.Month, 1);
+        var days = Enumerable.Range(0, DateTime.DaysInMonth(first.Year, first.Month))
+            .Select(i => new CalendarDay(first.AddDays(i), i < states.Length ? states[i] : DayState.Free))
+            .ToList();
+        return new CarCalendar(1, first, first, days);
+    }
+}
+
+/// <summary>Maintenance calls; writes stay pending until the test completes or refuses them.</summary>
+internal sealed class ControlledMaintenanceService : IMaintenanceService
+{
+    private TaskCompletionSource _write = new();
+
+    public List<MaintenanceRecord> Records { get; } = [Record(4, 1)];
+
+    public int Writes { get; private set; }
+
+    public (int RecordId, int Version)? LastUpdate { get; private set; }
+
+    public static MaintenanceRecord Record(int id, int version) => new()
+    {
+        Id = id,
+        CarId = 1,
+        Kind = MaintenanceKind.Damage,
+        Description = "Ön tampon",
+        StartDate = new DateOnly(2026, 3, 5),
+        EndDate = new DateOnly(2026, 3, 7),
+        Cost = 1250m,
+        Status = MaintenanceStatus.Active,
+        Version = version,
+    };
+
+    public Task<IReadOnlyList<MaintenanceRecord>> GetForCarAsync(UserSession session, int carId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<MaintenanceRecord>>([.. Records]);
+
+    public async Task<int> AddAsync(UserSession session, int carId, MaintenanceInput input, CancellationToken cancellationToken = default)
+    {
+        await Pending();
+        return 5;
+    }
+
+    public Task UpdateAsync(UserSession session, int recordId, int expectedVersion, MaintenanceInput input, CancellationToken cancellationToken = default)
+    {
+        LastUpdate = (recordId, expectedVersion);
+        return Pending();
+    }
+
+    public Task CancelAsync(UserSession session, int recordId, int expectedVersion, CancellationToken cancellationToken = default) => Pending();
+
+    public void Complete() => _write.SetResult();
+
+    public void Refuse(string message) => _write.SetException(new BusinessRuleException(message));
+
+    private Task Pending()
+    {
+        Writes++;
+        _write = new TaskCompletionSource();
+        return _write.Task;
+    }
+}
+
+/// <summary>Revenue reports answered by the test, in any order.</summary>
+internal sealed class ControlledReportService : IReportService
+{
+    public List<TaskCompletionSource<RevenueReport>> Requests { get; } = [];
+
+    public Task<RevenueReport> GetRevenueAsync(UserSession session, DateOnly firstDay, DateOnly lastDay, RevenueGrouping grouping, CancellationToken cancellationToken = default)
+    {
+        var answer = new TaskCompletionSource<RevenueReport>();
+        Requests.Add(answer);
+        return answer.Task;
+    }
+
+    public ExportFile ToCsv(RevenueReport report) => RevenueReportExport.ToCsv(report);
+
+    public static RevenueReport Report(decimal total) => new(
+        new DateOnly(2026, 3, 1),
+        new DateOnly(2026, 3, 31),
+        RevenueGrouping.Month,
+        [new RevenueLine("Mart 2026", null, 1, 2, total)],
+        [new RevenueLine("Anka Kent", "00 DMO 001", 1, 2, total)],
+        new RevenueLine("Toplam", null, 1, 2, total),
+        new DateTime(2026, 3, 2, 10, 0, 0));
+}
+
+/// <summary>Answers the save dialog with a fixed path (or a cancel) and records the suggested names.</summary>
+internal sealed class RecordingSaveFilePrompt(string? path) : ISaveFilePrompt
+{
+    public List<string> Suggested { get; } = [];
+
+    public string? AskSavePath(string suggestedName, string filter)
+    {
+        Suggested.Add(suggestedName);
+        return path;
+    }
 }

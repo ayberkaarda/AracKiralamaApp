@@ -56,7 +56,38 @@ namespace AracKiralama.UI
             txtDailyPrice.AcceptMoneyOnly();
             dataGridView1.UseReadOnlyList();
             btnUpdateCar.Enabled = false;
+
+            // The car operations below the picture: the calendar and the maintenance log of the car in the
+            // form, and the revenue report. They size themselves from the font.
+            btnCalendar = new Button { Name = "btnCalendar", Text = "Müsaitlik Takvimi", AutoSize = true, Enabled = false };
+            btnMaintenance = new Button { Name = "btnMaintenance", Text = "Bakım / Hasar Kayıtları", AutoSize = true, Enabled = false };
+            btnRevenue = new Button { Name = "btnRevenue", Text = "Gelir Raporu", AutoSize = true };
+            btnCalendar.Click += (_, _) => OpenForSelectedCar<AvailabilityCalendarForm>();
+            btnMaintenance.Click += (_, _) => OpenForSelectedCar<MaintenanceForm>();
+            btnRevenue.Click += (_, _) =>
+            {
+                using var report = _forms.Create<RevenueReportForm>(_session);
+                report.ShowDialog(this);
+            };
+            var operations = new FlowLayoutPanel
+            {
+                Name = "pnlOperations",
+                Location = new Point(picCar.Left, picCar.Bottom + 8),
+                Size = new Size(picCar.Width, btnUpdateCar.Top - picCar.Bottom - 16),
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = true,
+                AutoScroll = true,
+            };
+            operations.Controls.AddRange([btnCalendar, btnMaintenance, btnRevenue]);
+            Controls.Add(operations);
+
+            // Both need the car in the form, exactly like "Aracı Güncelle".
+            btnUpdateCar.EnabledChanged += (_, _) => btnCalendar.Enabled = btnMaintenance.Enabled = btnUpdateCar.Enabled;
         }
+
+        private readonly Button btnCalendar;
+        private readonly Button btnMaintenance;
+        private readonly Button btnRevenue;
 
         public bool SignedOut { get; private set; }
 
@@ -333,6 +364,19 @@ namespace AracKiralama.UI
         {
             using var panel = _forms.Create<UserManagementPanel>(_session);
             panel.ShowDialog(this);
+        }
+
+        /// <summary>Opens a form of the car in the form (calendar or maintenance log); nothing without a car.</summary>
+        private void OpenForSelectedCar<T>()
+            where T : Form
+        {
+            if (SelectedCarId is not { } id || ShownCars.FirstOrDefault(c => c.Id == id) is not { } car)
+            {
+                return;
+            }
+
+            using var form = _forms.Create<T>(_session, id, car.Brand + " " + car.Model + " (" + car.Plate + ")");
+            form.ShowDialog(this);
         }
 
         private void btnRentals_Click(object? sender, EventArgs e)
