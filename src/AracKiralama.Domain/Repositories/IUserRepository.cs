@@ -9,6 +9,13 @@ public interface IUserRepository
 
     Task<AccountCredentials?> FindByIdAsync(int userId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The account's role as stored now, or <see langword="null"/> when the account no longer exists.
+    /// The services ask for it at the start of every operation, so a session whose account was demoted
+    /// or deleted after sign-in loses the rights at once.
+    /// </summary>
+    Task<UserRole?> GetRoleAsync(int userId, CancellationToken cancellationToken = default);
+
     /// <summary>Every account, ordered by id, without passwords.</summary>
     Task<IReadOnlyList<UserSummary>> GetAllAsync(CancellationToken cancellationToken = default);
 
