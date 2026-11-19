@@ -1,6 +1,7 @@
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
 using AracKiralama.UI.Tests.Support;
+using AracKiralama.UI.Theming;
 using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
@@ -27,6 +28,29 @@ public sealed class ListingTests
         cars.CatalogRequests[1].Answer.SetResult([cars.Cars[0]]);
 
         Assert.Equal([2], form.ShownCars.Select(c => c.Id));
+    });
+
+    /// <summary>The grid says the cars are loading while the latest request is on its way, and that none match when it is empty.</summary>
+    [Fact]
+    public void Catalog_SaysWhileItLoadsAndWhenNothingMatches() => Run(() =>
+    {
+        var cars = new ControlledCarService();
+        using var form = new CarListForm(cars, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        var grid = Find<CardGrid>(form, "grdCars");
+
+        var refresh = form.RefreshAsync();
+        Assert.Equal(grid.LoadingText, grid.Message);
+        cars.CatalogRequests[0].Answer.SetResult([]);
+
+        Assert.True(refresh.IsCompletedSuccessfully);
+        Assert.Equal(grid.EmptyText, grid.Message);
+        Assert.Empty(form.RentButtons);
+
+        _ = form.LoadCarsAsync();
+        cars.CatalogRequests[1].Answer.SetResult(cars.Cars);
+        Assert.Null(grid.Message);
+        Assert.Equal(2, form.RentButtons.Count);
+        Assert.Equal(2, grid.Controls.Count);
     });
 
     [Fact]

@@ -1,27 +1,31 @@
-using System.Drawing.Drawing2D;
+using System.Globalization;
 using AracKiralama.Business.Services;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI
 {
-    /// <summary>The customer's car list: filter by brand, gearbox and fuel, book a car, open the profile.</summary>
-    public partial class CarListForm : Form, ISignOutPanel
+    /// <summary>The customer's car list: filter by brand, gearbox and fuel, book a car, open the own rentals.</summary>
+    public sealed class CarListForm : AppDialog, ISignOutPanel
     {
-        private const int CardWidth = 550;
-        private const int CardHeight = 180;
-        private const int CardSpacing = 30;
-        private const int RowSpacing = 20;
-        private const int CardsPerRow = 2;
-
         private readonly ICarService _cars;
         private readonly IFormFactory _forms;
         private readonly UserSession _session;
         private readonly RequestSequence _loads = new();
         private readonly CarFilterBoxes _filter;
-        private readonly Panel _scrollPanel;
+
+        private readonly Label lblGreeting = new() { Name = nameof(lblGreeting), AutoSize = true, UseMnemonic = false, TextAlign = ContentAlignment.MiddleRight };
+        private readonly ThemedComboBox cmbBrand = FormLayout.Picker(nameof(cmbBrand), 170);
+        private readonly ThemedComboBox cmbTransmission = FormLayout.Picker(nameof(cmbTransmission), 150);
+        private readonly ThemedComboBox cmbFuelType = FormLayout.Picker(nameof(cmbFuelType), 150);
+        private readonly Label lblCount = FormLayout.Hint(string.Empty);
+        private readonly CardGrid grdCars = new() { Name = nameof(grdCars), EmptyText = "Bu seçimlere uyan, kiralamaya açık araç yok.", LoadingText = "Araçlar yükleniyor…" };
+        private readonly ThemedButton btnProfile = FormLayout.Button(nameof(btnProfile), "Kiralamalarım", ButtonKind.Secondary, Glyphs.List);
+        private readonly ThemedButton btnSignOut = FormLayout.Button(nameof(btnSignOut), "Çıkış Yap", ButtonKind.Secondary, Glyphs.SignOut);
 
         public CarListForm(ICarService cars, IFormFactory forms, UserSession session)
+            : base("Araçlar", "Kiralamaya açık araçlar; marka, vites ve yakıt türüne göre süzün.", Glyphs.Car, new Size(1040, 700), new Size(720, 560))
         {
             ArgumentNullException.ThrowIfNull(cars);
             ArgumentNullException.ThrowIfNull(forms);
@@ -30,41 +34,23 @@ namespace AracKiralama.UI
             _cars = cars;
             _forms = forms;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            BackgroundImage = AppAssets.Background;
-            BackgroundImageLayout = ImageLayout.Stretch;
-            DoubleBuffered = true;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
-            var header = BuildHeader();
-            var (filterPanel, filter) = BuildFilterPanel(header.Bottom + 10);
-            _filter = filter;
+            BuildLayout();
+            _filter = new CarFilterBoxes(cmbBrand, cmbTransmission, cmbFuelType);
             _filter.Changed += async (_, _) => await this.RunAsync(LoadCarsAsync);
+            lblGreeting.Text = "Merhaba, " + AppText.DisplayName(session.UserName) + Environment.NewLine + "Müşteri hesabı";
 
-            _scrollPanel = new Panel
-            {
-                BackColor = Color.Transparent,
-                Location = new Point(0, filterPanel.Bottom + 10),
-                AutoScroll = true,
-            };
-            _scrollPanel.Size = new Size(ClientSize.Width, ClientSize.Height - _scrollPanel.Top);
-            Controls.Add(_scrollPanel);
+            Load += async (_, _) => await this.RunAsync(RefreshAsync);
+            btnProfile.Click += async (_, _) => await OpenProfileAsync();
+            btnSignOut.Click += (_, _) => SignOut();
         }
 
         public bool SignedOut { get; private set; }
 
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
-
         /// <summary>The car cards shown now, for tests.</summary>
         internal IReadOnlyList<Car> ShownCars { get; private set; } = [];
+
+        /// <summary>The "Kirala" buttons of the shown cards, for tests.</summary>
+        internal IReadOnlyList<Button> RentButtons { get; private set; } = [];
 
         internal CarFilterBoxes Filter => _filter;
 
@@ -79,196 +65,108 @@ namespace AracKiralama.UI
         internal async Task LoadCarsAsync()
         {
             var request = _loads.Next();
-            var cars = await _cars.GetCatalogAsync(_session, _filter.Current);
-            if (!_loads.IsLatest(request) || IsDisposed)
+            grdCars.IsLoading = true;
+            try
             {
-                return;
+                var cars = await _cars.GetCatalogAsync(_session, _filter.Current);
+                if (!_loads.IsLatest(request) || IsDisposed)
+                {
+                    return;
+                }
+
+                ShowCars(cars);
             }
-
-            ShowCars(cars);
-        }
-
-        protected override async void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            await this.RunAsync(RefreshAsync);
-        }
-
-        private Panel BuildHeader()
-        {
-            var header = new Panel { Size = new Size(ClientSize.Width, 50), BackColor = Color.SteelBlue };
-            Controls.Add(header);
-
-            header.Controls.Add(new Label
+            finally
             {
-                Text = "Merhaba, " + AppText.DisplayName(_session.UserName),
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 12, FontStyle.Bold),
-                Location = new Point(10, 12),
-                Size = new Size(500, 30),
-            });
-
-            var profile = new Button
-            {
-                Name = "btnProfile",
-                Text = "Profil",
-                Size = new Size(100, 30),
-                Location = new Point(header.Width - 230, 10),
-                BackColor = Color.LightSeaGreen,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            profile.Click += async (_, _) =>
-            {
-                using (var form = _forms.Create<ProfileForm>(_session))
+                if (_loads.IsLatest(request) && !IsDisposed)
                 {
-                    form.ShowDialog(this);
+                    grdCars.IsLoading = false;
                 }
-
-                // A cancellation in the profile frees days of a car.
-                await this.RunAsync(RefreshAsync);
-            };
-            header.Controls.Add(profile);
-
-            var signOut = new Button
-            {
-                Name = "btnSignOut",
-                Text = "Çıkış Yap",
-                Size = new Size(100, 30),
-                Location = new Point(header.Width - 110, 10),
-                BackColor = Color.IndianRed,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            signOut.Click += (_, _) =>
-            {
-                if (Prompts.Confirm("Çıkış yapmak istediğinizden emin misiniz?"))
-                {
-                    SignedOut = true;
-                    Close();
-                }
-            };
-            header.Controls.Add(signOut);
-            return header;
-        }
-
-        private (Panel Panel, CarFilterBoxes Filter) BuildFilterPanel(int top)
-        {
-            var panel = new Panel
-            {
-                Size = new Size(ClientSize.Width, 60),
-                Location = new Point(0, top),
-                BackColor = Color.WhiteSmoke,
-            };
-            Controls.Add(panel);
-
-            static Label Caption(string text, int x) => new()
-            {
-                Text = text,
-                Location = new Point(x, 0),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 10),
-            };
-
-            var brand = new ComboBox { Name = "cmbBrand", Location = new Point(20, 22), Width = 150 };
-            var transmission = new ComboBox { Name = "cmbTransmission", Location = new Point(190, 22), Width = 150 };
-            var fuel = new ComboBox { Name = "cmbFuelType", Location = new Point(360, 22), Width = 150 };
-            panel.Controls.AddRange([Caption("Marka", 20), Caption("Vites Tipi", 190), Caption("Yakıt Tipi", 360), brand, transmission, fuel]);
-            return (panel, new CarFilterBoxes(brand, transmission, fuel));
+            }
         }
 
         private void ShowCars(IReadOnlyList<Car> cars)
         {
             ShownCars = cars;
-            _scrollPanel.SuspendLayout();
-            try
+            var buttons = new List<Button>(cars.Count);
+            var cards = new List<Control>(cars.Count);
+            foreach (var car in cars)
             {
-                foreach (Control old in _scrollPanel.Controls.Cast<Control>().ToList())
-                {
-                    old.Dispose();
-                }
+                var carId = car.Id;
+                var (card, rent) = CarCards.Build(car, () => OpenRentalAsync(carId));
+                cards.Add(FormLayout.ScaledFor(card, grdCars));
+                buttons.Add(rent);
+            }
 
-                var rowWidth = (CardsPerRow * (CardWidth + CardSpacing)) - CardSpacing;
-                var left = (ClientSize.Width - rowWidth) / 2;
-                for (var i = 0; i < cars.Count; i++)
+            grdCars.Replace(cards);
+            RentButtons = buttons;
+            lblCount.Text = cars.Count == 0 ? string.Empty : string.Create(CultureInfo.CurrentCulture, $"{cars.Count} araç");
+        }
+
+        private async Task OpenRentalAsync(int carId)
+        {
+            string? done = null;
+            using (var form = _forms.Create<RentalForm>(_session, carId))
+            {
+                if (form.ShowDialog(this) == DialogResult.OK)
                 {
-                    var card = BuildCard(cars[i]);
-                    card.Location = new Point(
-                        left + (i % CardsPerRow * (CardWidth + CardSpacing)),
-                        10 + (i / CardsPerRow * (CardHeight + RowSpacing)) + _scrollPanel.AutoScrollPosition.Y);
-                    _scrollPanel.Controls.Add(card);
+                    done = form.DoneMessage;
                 }
             }
-            finally
+
+            if (done is not null)
             {
-                _scrollPanel.ResumeLayout();
+                await this.RunAsync(LoadCarsAsync);
+                ShowStatus(StatusKind.Success, done);
             }
         }
 
-        private Panel BuildCard(Car car)
+        private async Task OpenProfileAsync()
         {
-            var card = new Panel
+            using (var form = _forms.Create<ProfileForm>(_session))
             {
-                Size = new Size(CardWidth, CardHeight),
-                BackColor = Color.White,
-                Padding = new Padding(10),
-            };
-            card.Region = Rounded(card.Size, 20);
+                form.ShowDialog(this);
+            }
 
-            var picture = new PictureBox
-            {
-                Size = new Size(180, 140),
-                Location = new Point(10, 20),
-                SizeMode = PictureBoxSizeMode.Zoom,
-            };
-            picture.ShowCarPicture(car.ImageUrl);
-            card.Controls.Add(picture);
-
-            card.Controls.Add(new Label
-            {
-                Size = new Size(230, 150),
-                Location = new Point(200, 25),
-                Text = $"{car.Brand} {car.Model}\n{car.Year} - {car.Transmission} - {car.FuelType}\nGünlük Ücret: {DisplayFormat.Money(car.DailyPrice)}",
-                Font = new Font("Segoe UI", 12, FontStyle.Bold),
-                ForeColor = Color.Black,
-            });
-
-            var rent = new Button
-            {
-                Text = "Kirala",
-                Size = new Size(110, 40),
-                Location = new Point(430, 120),
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                BackColor = Color.Green,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            var carId = car.Id;
-            rent.Click += async (_, _) =>
-            {
-                bool rented;
-                using (var form = _forms.Create<RentalForm>(_session, carId))
-                {
-                    rented = form.ShowDialog(this) == DialogResult.OK;
-                }
-
-                if (rented)
-                {
-                    await this.RunAsync(LoadCarsAsync);
-                }
-            };
-            card.Controls.Add(rent);
-            return card;
+            // A cancellation in the profile frees days of a car.
+            await this.RunAsync(RefreshAsync);
         }
 
-        private static Region Rounded(Size size, int radius)
+        private void SignOut()
         {
-            using var path = new GraphicsPath();
-            path.AddArc(0, 0, radius, radius, 180, 90);
-            path.AddArc(size.Width - radius, 0, radius, radius, 270, 90);
-            path.AddArc(size.Width - radius, size.Height - radius, radius, radius, 0, 90);
-            path.AddArc(0, size.Height - radius, radius, radius, 90, 90);
-            return new Region(path);
+            if (Prompts.Confirm("Çıkış yapmak istediğinizden emin misiniz?"))
+            {
+                SignedOut = true;
+                Close();
+            }
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(CarListForm);
+            lblGreeting.Font = Theme.Fonts.Body;
+            lblGreeting.ForeColor = Theme.Current.TextSecondary;
+            SetHeaderAside(lblGreeting);
+
+            lblCount.Name = nameof(lblCount);
+            lblCount.Margin = new Padding(Spacing.L, 0, 0, Spacing.M);
+            var filters = FormLayout.FieldRow(
+                "filterRow",
+                (FormLayout.Field("&Marka", cmbBrand), 0),
+                (FormLayout.Field("&Vites", cmbTransmission), 0),
+                (FormLayout.Field("&Yakıt", cmbFuelType), 0),
+                (FormLayout.Spacer("filterSpacer"), 100),
+                (lblCount, 0));
+            lblCount.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+            var filterCard = FormLayout.Card("filterCard", null, filters, fill: false);
+            filterCard.Padding = new Padding(Spacing.L, Spacing.M, Spacing.L, 0);
+            grdCars.Margin = Padding.Empty;
+            Content.Controls.Add(FormLayout.Page("carsPage", (filterCard, false), (grdCars, true)));
+
+            CancelButton = btnSignOut;
+            SetFooterNote("Gün sayısını ve tutarı bir sonraki adımda görürsünüz.");
+            SetFooterButtons(btnProfile, btnSignOut);
+            FinishLayout();
         }
     }
 }

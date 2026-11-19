@@ -44,9 +44,16 @@ internal class CardPanel : Panel, IThemeAware
     /// An auto-sized card measures its stacked children by their preferred height at the card's
     /// width, so it grows when their content wraps (a docked panel would use their current height).
     /// </summary>
+    /// <summary>
+    /// Whether the card reports its content's height without sizing itself (<see cref="Control.AutoSize"/> would),
+    /// for a container that places its cards by hand, such as <see cref="CardGrid"/>.
+    /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool MeasureByContent { get; set; }
+
     public override Size GetPreferredSize(Size proposedSize)
     {
-        if (!AutoSize)
+        if (!AutoSize && !MeasureByContent)
         {
             return base.GetPreferredSize(proposedSize);
         }

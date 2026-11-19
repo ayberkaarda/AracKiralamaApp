@@ -4,42 +4,62 @@ using AracKiralama.Business;
 using AracKiralama.Business.Services;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI
 {
     /// <summary>
     /// Booking of one car: choose the pick-up day and the number of days, see the total and the days that
-    /// are already taken, and confirm. Closes with <see cref="DialogResult.OK"/> when the rental was stored.
+    /// are already taken, and confirm. Closes with <see cref="DialogResult.OK"/> when the rental was stored;
+    /// the car list then shows <see cref="DoneMessage"/>.
     /// </summary>
-    public partial class RentalForm : Form
+    public sealed class RentalForm : AppDialog
     {
         private readonly ICarService _cars;
         private readonly IRentalService _rentals;
+        private readonly IFormFactory _forms;
         private readonly UserSession _session;
         private readonly int _carId;
         private readonly ExclusiveOperation _rent = new();
         private int _days;
+        private bool _quoteRefused;
+
+        private readonly VehiclePicture picCar = new() { Name = nameof(picCar), Height = 170 };
+        private readonly HeadingLabel lblCarName = new() { Name = nameof(lblCarName), Text = "Araç yükleniyor…" };
+        private readonly PlateChip lblPlate = new() { Name = nameof(lblPlate) };
+        private readonly Label lblBrand = Value(nameof(lblBrand));
+        private readonly Label lblModel = Value(nameof(lblModel));
+        private readonly Label lblYear = Value(nameof(lblYear));
+        private readonly Label lblTransmission = Value(nameof(lblTransmission));
+        private readonly Label lblFuelType = Value(nameof(lblFuelType));
+        private readonly Label lblColor = Value(nameof(lblColor));
+        private readonly Label lblDailyPrice = Value(nameof(lblDailyPrice));
+        private readonly DatePicker dtpStart = new() { Name = nameof(dtpStart), Format = DateTimePickerFormat.Custom, CustomFormat = "d MMMM yyyy dddd" };
+        private readonly ThemedButton btnDecrease = FormLayout.Button(nameof(btnDecrease), "−", ButtonKind.Secondary);
+        private readonly TextBox txtDays = new() { Name = nameof(txtDays), MaxLength = 4, TextAlign = HorizontalAlignment.Center };
+        private readonly ThemedButton btnIncrease = FormLayout.Button(nameof(btnIncrease), "+", ButtonKind.Secondary);
+        private readonly Label lblReturn = Value(nameof(lblReturn));
+        private readonly Label lblTotal = Value(nameof(lblTotal));
+        private readonly Label lblDiscount = FormLayout.Hint(string.Empty);
+        private readonly Label lblBooked = FormLayout.Text(nameof(lblBooked));
+        private readonly ThemedButton btnCalendar = FormLayout.Button(nameof(btnCalendar), "Müsaitlik takvimi", ButtonKind.Subtle, Glyphs.Calendar);
+        private readonly ThemedButton btnConfirm = FormLayout.Button(nameof(btnConfirm), "Kiralamayı Onayla", ButtonKind.Primary, Glyphs.CheckMark);
+        private readonly ThemedButton btnBack = FormLayout.Button(nameof(btnBack), "Geri Dön", ButtonKind.Secondary);
 
         public RentalForm(ICarService cars, IRentalService rentals, IFormFactory forms, UserSession session, int carId)
+            : base("Araç kirala", "Alış gününü ve gün sayısını seçin; tutarı görüp kiralamayı onaylayın.", Glyphs.Car, new Size(900, 600), new Size(720, 520), modal: true)
         {
-            ArgumentNullException.ThrowIfNull(forms);
-            _forms = forms;
             ArgumentNullException.ThrowIfNull(cars);
             ArgumentNullException.ThrowIfNull(rentals);
+            ArgumentNullException.ThrowIfNull(forms);
             ArgumentNullException.ThrowIfNull(session);
 
             _cars = cars;
             _rentals = rentals;
+            _forms = forms;
             _session = session;
             _carId = carId;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
+            BuildLayout();
 
             txtDays.AcceptDigitsOnly();
             var policy = _rentals.Policy;
@@ -52,21 +72,30 @@ namespace AracKiralama.UI
             btnConfirm.Enabled = false;
             _rent.HoldClosingOf(this);
 
-            var calendar = new Button { Name = "btnCalendar", Text = "Müsaitlik Takvimi", AutoSize = true, Location = new Point(btnBack.Right + 16, btnBack.Top) };
-            calendar.Click += (_, _) =>
+            Load += async (_, _) => await this.RunAsync(LoadCarAsync);
+            btnConfirm.Click += async (_, _) => await RentAndCloseAsync();
+            btnIncrease.Click += (_, _) =>
             {
-                var title = Car is { } car ? car.Brand + " " + car.Model : AppText.Title;
-                using var form = _forms.Create<AvailabilityCalendarForm>(_session, _carId, title);
-                form.ShowDialog(this);
+                ApplyTypedDays();
+                SetDays(_days + 1);
             };
-            Controls.Add(calendar);
+            btnDecrease.Click += (_, _) =>
+            {
+                ApplyTypedDays();
+                SetDays(_days - 1);
+            };
+            txtDays.KeyDown += (_, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    e.SuppressKeyPress = true;
+                    ApplyTypedDays();
+                }
+            };
+            txtDays.Leave += (_, _) => ApplyTypedDays();
+            dtpStart.ValueChanged += (_, _) => UpdateTotal();
+            btnCalendar.Click += (_, _) => OpenCalendar();
         }
-
-        private readonly IFormFactory _forms;
-
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         /// <summary>The car as it was loaded; its price is the one the customer confirms.</summary>
         internal Car? Car { get; private set; }
@@ -77,6 +106,9 @@ namespace AracKiralama.UI
 
         /// <summary>The days already taken, as loaded with the car.</summary>
         internal IReadOnlyList<BookedRange> Booked { get; private set; } = [];
+
+        /// <summary>What the car list says once the rental was stored.</summary>
+        internal string? DoneMessage { get; private set; }
 
         internal async Task LoadCarAsync()
         {
@@ -89,14 +121,16 @@ namespace AracKiralama.UI
 
             Car = car;
             Booked = booked;
+            lblCarName.Text = car.Brand + " " + car.Model;
+            lblPlate.Text = car.Plate;
             lblBrand.Text = car.Brand;
             lblModel.Text = car.Model;
             lblYear.Text = car.Year.ToString(CultureInfo.InvariantCulture);
             lblTransmission.Text = car.Transmission;
             lblFuelType.Text = car.FuelType;
             lblColor.Text = car.Color;
-            lblDailyPrice.Text = DisplayFormat.Money(car.DailyPrice);
-            picCar.ShowCarPicture(car.ImageUrl);
+            lblDailyPrice.Text = DisplayFormat.Money(car.DailyPrice) + " / gün";
+            picCar.ShowCar(car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
             lblBooked.Text = DescribeBooked(booked);
             btnConfirm.Enabled = true;
             UpdateTotal();
@@ -143,6 +177,8 @@ namespace AracKiralama.UI
                     }
 
                     rented = true;
+                    DoneMessage = $"Kiralama kaydedildi: {car.Brand} {car.Model}, {DisplayFormat.Date(quote.StartDate)} - {DisplayFormat.Date(quote.EndDate)}, {DisplayFormat.Money(quote.Total)}. "
+                        + "Kiralamalarım ekranından sözleşmeyi kaydedebilirsiniz.";
                 },
                 btnConfirm,
                 btnIncrease,
@@ -151,15 +187,10 @@ namespace AracKiralama.UI
             return rented;
         }
 
-        protected override async void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            await this.RunAsync(LoadCarAsync);
-        }
-
         /// <summary>The taken days as the customer reads them: pick-up day to return day.</summary>
         internal static string DescribeBooked(IReadOnlyList<BookedRange> booked)
         {
+            ArgumentNullException.ThrowIfNull(booked);
             if (booked.Count == 0)
             {
                 return "Bu araç için dolu tarih yok.";
@@ -179,6 +210,14 @@ namespace AracKiralama.UI
             return text.ToString();
         }
 
+        private async Task RentAndCloseAsync()
+        {
+            if (await RentAsync())
+            {
+                DialogResult = DialogResult.OK;
+            }
+        }
+
         /// <summary>
         /// Loads the car and its taken days again after a refused booking. When the car itself is gone
         /// or closed, the booking's own refusal is the message the customer sees.
@@ -195,21 +234,38 @@ namespace AracKiralama.UI
             }
         }
 
+        /// <summary>The return day and the total of the chosen days; a refused choice says why in the message strip.</summary>
         private void UpdateTotal()
         {
-            if (Car is { } car)
+            if (Car is not { } car)
             {
-                try
+                return;
+            }
+
+            try
+            {
+                var quote = _rentals.Quote(car.Id, car.DailyPrice, StartDate, _days);
+                lblTotal.Text = DisplayFormat.Money(quote.Total);
+                lblReturn.Text = DisplayFormat.Date(quote.EndDate);
+                lblDiscount.Text = quote.Discounted ? "Uzun kiralama indirimi dahil." : string.Empty;
+                if (_quoteRefused)
                 {
-                    var quote = _rentals.Quote(car.Id, car.DailyPrice, StartDate, _days);
-                    lblTotal.Text = "Toplam Tutar: " + DisplayFormat.Money(quote.Total);
-                }
-                catch (BusinessRuleException ex)
-                {
-                    lblTotal.Text = ex.Message;
+                    _quoteRefused = false;
+                    ClearStatus();
                 }
             }
+            catch (BusinessRuleException ex)
+            {
+                lblTotal.Text = "—";
+                lblReturn.Text = "—";
+                lblDiscount.Text = string.Empty;
+                _quoteRefused = true;
+                ShowStatus(StatusKind.Warning, ex.Message);
+            }
         }
+
+        /// <summary>Takes the typed number of days, as leaving the days box does.</summary>
+        internal void ApplyDays() => ApplyTypedDays();
 
         /// <summary>Takes the typed number of days, kept within the settings.</summary>
         private void ApplyTypedDays()
@@ -229,41 +285,132 @@ namespace AracKiralama.UI
             UpdateTotal();
         }
 
-        private void btnIncrease_Click(object? sender, EventArgs e)
+        private void OpenCalendar()
         {
-            ApplyTypedDays();
-            SetDays(_days + 1);
+            var title = Car is { } car ? car.Brand + " " + car.Model : AppText.Title;
+            using var form = _forms.Create<AvailabilityCalendarForm>(_session, _carId, title);
+            form.ShowDialog(this);
         }
 
-        private void btnDecrease_Click(object? sender, EventArgs e)
+        private static Label Value(string name)
         {
-            ApplyTypedDays();
-            SetDays(_days - 1);
+            var label = FormLayout.Text(name);
+            label.Font = Theme.Fonts.BodyStrong;
+            return label;
         }
 
-        private void txtDays_KeyDown(object? sender, KeyEventArgs e)
+        private static Label Key(string text)
         {
-            if (e.KeyCode == Keys.Enter)
+            var label = FormLayout.Hint(text);
+            label.Margin = new Padding(0, 0, Spacing.L, Spacing.S);
+            return label;
+        }
+
+        /// <summary>Captions on the left, values on the right, one pair per row.</summary>
+        private static TableLayoutPanel Specs(string name, params (string Caption, Label Value)[] rows)
+        {
+            var table = new TableLayoutPanel
             {
-                e.SuppressKeyPress = true;
-                ApplyTypedDays();
+                Name = name,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 2,
+                RowCount = rows.Length,
+                Dock = DockStyle.Top,
+                Margin = Padding.Empty,
+            };
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            for (var i = 0; i < rows.Length; i++)
+            {
+                table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                var (caption, value) = rows[i];
+                value.Margin = new Padding(0, 0, 0, Spacing.S);
+                value.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+                table.Controls.Add(Key(caption), 0, i);
+                table.Controls.Add(value, 1, i);
             }
+
+            return table;
         }
 
-        private void txtDays_Leave(object? sender, EventArgs e) => ApplyTypedDays();
-
-        private void dtpStart_ValueChanged(object? sender, EventArgs e) => UpdateTotal();
-
-        private void btnBack_Click(object? sender, EventArgs e) => Close();
-
-        private async void btnConfirm_Click(object? sender, EventArgs e)
+        private void BuildLayout()
         {
-            if (await RentAsync())
+            Name = nameof(RentalForm);
+            var p = Theme.Current;
+
+            // The car: its drawing, its name with the plate and its details.
+            lblCarName.Font = Theme.Fonts.Title;
+            lblCarName.ForeColor = p.Text;
+            lblCarName.Margin = Padding.Empty;
+            lblPlate.Margin = new Padding(Spacing.S, Spacing.XS, 0, 0);
+            picCar.Margin = new Padding(0, 0, 0, Spacing.M);
+            var nameRow = FormLayout.Bar("carNameRow", (lblCarName, true), (lblPlate, false));
+            lblCarName.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+            nameRow.Margin = new Padding(0, 0, 0, Spacing.M);
+            var specs = Specs(
+                "carSpecs",
+                ("Marka", lblBrand),
+                ("Model", lblModel),
+                ("Yıl", lblYear),
+                ("Vites", lblTransmission),
+                ("Yakıt", lblFuelType),
+                ("Renk", lblColor),
+                ("Günlük ücret", lblDailyPrice));
+            var carCard = FormLayout.Card("carCard", null, FormLayout.Stack("carStack", picCar, nameRow, specs));
+            carCard.Margin = new Padding(0, 0, Spacing.S, 0);
+
+            // The booking: the pick-up day, the days, the total and the taken days.
+            dtpStart.Font = Theme.Fonts.Body;
+            var startBox = FormLayout.Date(dtpStart);
+            startBox.Width = 240;
+            var start = FormLayout.Field("&Alış günü", startBox);
+            btnDecrease.AccessibleName = "Bir gün azalt";
+            btnIncrease.AccessibleName = "Bir gün artır";
+            btnDecrease.MinimumSize = btnIncrease.MinimumSize = new Size(Sizes.ControlHeight, Sizes.ControlHeight);
+            btnDecrease.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnIncrease.Margin = new Padding(Spacing.S, 0, 0, 0);
+            var daysBox = FormLayout.Input(txtDays);
+            daysBox.Width = 72;
+            daysBox.Margin = Padding.Empty;
+            txtDays.AccessibleName = "Gün sayısı";
+            var stepper = FormLayout.Bar("daysStepper", (btnDecrease, false), (daysBox, false), (btnIncrease, false));
+            var daysField = FormLayout.Field("&Gün sayısı", stepper);
+            var choice = FormLayout.FieldRow("choiceRow", (start, 0), (daysField, 0), (FormLayout.Spacer("choiceSpacer"), 100));
+
+            lblTotal.Font = Theme.Fonts.Display;
+            lblTotal.Name = nameof(lblTotal);
+            lblDiscount.Name = nameof(lblDiscount);
+            lblDiscount.Margin = Padding.Empty;
+            var summary = FormLayout.Stack("summaryStack", Specs("summarySpecs", ("İade günü", lblReturn)), Key("Toplam tutar"), lblTotal, lblDiscount);
+            var summaryCard = new CardPanel
             {
-                Prompts.Inform("Kiralama işlemi onaylandı ve kaydedildi. Anasayfaya yönlendiriliyorsunuz.");
-                DialogResult = DialogResult.OK;
-                Close();
-            }
+                Name = "summaryCard",
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(Spacing.L + Spacing.XS, Spacing.M, Spacing.L, Spacing.M),
+                Margin = new Padding(0, Spacing.S, 0, Spacing.L),
+            };
+            summaryCard.Fill = p.SurfaceAlt;
+            summaryCard.Edge = p.Warm;
+            summaryCard.Controls.Add(summary);
+
+            lblBooked.ForeColor = p.TextSecondary;
+            lblBooked.Margin = new Padding(0, 0, 0, Spacing.S);
+            btnCalendar.Margin = Padding.Empty;
+            btnCalendar.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            var bookingCard = FormLayout.Card("bookingCard", "Kiralama", FormLayout.Stack("bookingStack", choice, summaryCard, lblBooked, btnCalendar));
+            bookingCard.Margin = new Padding(Spacing.S, 0, 0, 0);
+
+            Content.Controls.Add(FormLayout.Columns("layout", carCard, 44, bookingCard));
+
+            // No accept button: Enter in the days box takes the typed days, it never confirms a rental.
+            CancelButton = btnBack;
+            btnBack.DialogResult = DialogResult.Cancel;
+            SetFooterNote("Başlamamış bir kiralamayı Kiralamalarım ekranından iptal edebilirsiniz.");
+            SetFooterButtons(btnConfirm, btnBack);
+            FinishLayout();
         }
     }
 }

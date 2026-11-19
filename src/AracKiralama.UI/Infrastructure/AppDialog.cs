@@ -443,7 +443,9 @@ public abstract class AppDialog : Form, IStatusSurface
                 }
             }
 
-            var nested = Overflow(child);
+            // A grid that scrolls its own cards is measured by itself: the cards below its visible part do not
+            // make the window taller.
+            var nested = child is ISelfScrolling ? Size.Empty : Overflow(child);
             width = Math.Max(width, nested.Width);
             height = Math.Max(height, nested.Height);
         }

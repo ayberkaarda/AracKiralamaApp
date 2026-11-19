@@ -31,7 +31,8 @@ internal static class DisplayFormat
 
     public static string Date(DateOnly? value) => value is { } date ? Date(date) : "-";
 
-    public static string Money(decimal value) => value.ToString("0.00", Turkish) + " TL";
+    /// <summary>"1.250,00 TL": thousands grouped, so prices and totals read at a glance.</summary>
+    public static string Money(decimal value) => value.ToString("#,0.00", Turkish) + " TL";
 
     /// <summary>A price as the car form edits it (decimal comma, no currency).</summary>
     public static string MoneyInput(decimal value) => value.ToString("0.##", Turkish);

@@ -207,6 +207,9 @@ internal static class FormLayout
     /// <summary>A multi-line text box framed like the other inputs, <paramref name="height"/> logical pixels tall.</summary>
     public static TextField Input(TextBox box, int height) => new(box, height);
 
+    /// <summary>A date picker framed at the shared control height.</summary>
+    public static DateField Date(DatePicker box) => new(box);
+
     /// <summary>A number box framed at the shared control height.</summary>
     public static NumberField Number(NumericUpDown box) => new(box);
 
@@ -230,7 +233,7 @@ internal static class FormLayout
         field.Controls.Add(Caption(caption));
         if (input.Dock == DockStyle.None)
         {
-            input.Anchor = input is ThemedComboBox or TextField or TextBox or NumberField
+            input.Anchor = input is ThemedComboBox or TextField or TextBox or NumberField or DateField
                 ? AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
                 : AnchorStyles.Left | AnchorStyles.Top;
         }
@@ -240,6 +243,7 @@ internal static class FormLayout
         {
             TextField framed => framed.Input,
             NumberField number => number.Input,
+            DateField date => date.Input,
             _ => input,
         };
         accessible.AccessibleName ??= caption.Replace("&", string.Empty, StringComparison.Ordinal);
@@ -469,6 +473,29 @@ internal static class FormLayout
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Scales a control built after its window was scaled for the monitor (a card added when a list loads) by the
+    /// same factor as the rest of the window. Before the window scaled, the factor is 1 and the window's own
+    /// scaling covers the control later.
+    /// </summary>
+    public static T ScaledFor<T>(T control, Control host)
+        where T : Control
+    {
+        ArgumentNullException.ThrowIfNull(control);
+        ArgumentNullException.ThrowIfNull(host);
+
+        if (host.FindForm() is { } form)
+        {
+            var factor = form.AutoScaleDimensions.Width / 96F;
+            if (factor > 0 && Math.Abs(factor - 1F) > 0.001F)
+            {
+                control.Scale(new SizeF(factor, factor));
+            }
+        }
+
+        return control;
     }
 
     /// <summary>An empty column for <see cref="Bar"/> that pushes the following items to the right.</summary>

@@ -127,12 +127,13 @@ public sealed class ExclusiveWriteTests
         Assert.Equal(3, rentals.LastQuote!.Days);
         Assert.Equal(new DateOnly(2026, 3, 10), rentals.LastQuote.StartDate);
         Assert.Equal(850.5m, rentals.LastQuote.DailyPrice);
-        Assert.Contains("Toplam Tutar: 2551,50 TL", prompts.Messages[0], StringComparison.Ordinal);
+        Assert.Contains("Toplam Tutar: 2.551,50 TL", prompts.Messages[0], StringComparison.Ordinal);
         Assert.Contains("13.03.2026", prompts.Messages[0], StringComparison.Ordinal);
         Assert.False(Find<DateTimePicker>(form, "dtpStart").Enabled);
 
         rentals.CompleteRent();
         Assert.True(first.Result);
+        Assert.Contains("10.03.2026 - 13.03.2026, 2.551,50 TL", form.DoneMessage, StringComparison.Ordinal);
     });
 
     [Fact]
