@@ -12,8 +12,8 @@ namespace AracKiralama.Data.Persistence;
 /// Only cars are added, never an account: neither the migrations nor the demonstration data create an
 /// account, so no installation has a default or documented password. The first admin is created by the
 /// first-run setup with a password of the installer's own choosing, and customers sign up themselves.
-/// The brands and models are made up, the plates use the province code 00 that no real plate has, and
-/// there are no pictures.
+/// The cars are common real models (the user interface shows a bundled photograph of each model), the plates
+/// use the province code 00 that no real plate has, and no picture address is stored.
 /// </remarks>
 internal static class DemoData
 {
@@ -56,11 +56,11 @@ internal static class DemoData
     /// <summary>The demonstration cars, in id order.</summary>
     internal static IEnumerable<Car> Cars()
     {
-        yield return Car("Anka", "Kent", 2021, "Otomatik", "Benzin", 32_000, "Beyaz", "00 DMO 001", 850m);
-        yield return Car("Anka", "Yol", 2019, "Manuel", "Dizel", 61_000, "Gri", "00 DMO 002", 700m);
-        yield return Car("Kartal", "Kasa", 2022, "Otomatik", "Dizel", 18_500, "Siyah", "00 DMO 003", 1_250m);
-        yield return Car("Poyraz", "Mini", 2020, "Manuel", "Benzin", 45_000, "Kırmızı", "00 DMO 004", 650m);
-        yield return Car("Toros", "Volt", 2023, "Otomatik", "Elektrik", 9_000, "Mavi", "00 DMO 005", 1_400m);
+        yield return Car("Renault", "Clio", 2021, "Otomatik", "Benzin", 32_000, "Beyaz", "00 DMO 001", 850m);
+        yield return Car("Fiat", "Egea", 2019, "Manuel", "Dizel", 61_000, "Füme", "00 DMO 002", 700m);
+        yield return Car("Ford", "Transit Custom", 2022, "Otomatik", "Dizel", 18_500, "Mavi", "00 DMO 003", 1_250m);
+        yield return Car("Fiat", "500", 2020, "Manuel", "Benzin", 45_000, "Turkuaz", "00 DMO 004", 650m);
+        yield return Car("Tesla", "Model 3", 2023, "Otomatik", "Elektrik", 9_000, "Beyaz", "00 DMO 005", 1_400m);
     }
 
     private static async Task<bool> IsEmptyAsync(AracDbContext db, CancellationToken cancellationToken)
