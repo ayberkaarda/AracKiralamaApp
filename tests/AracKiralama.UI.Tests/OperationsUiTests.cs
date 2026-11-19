@@ -321,6 +321,27 @@ public sealed class OperationsUiTests
         Assert.True(Find<Button>(form, "btnMaintenance").Enabled);
     });
 
+    /// <summary>The contract button on a rental card fits its text at any font size and keeps its right edge next to the end button.</summary>
+    [Theory]
+    [InlineData(9f)]
+    [InlineData(14f)]
+    [InlineData(20f)]
+    [InlineData(28f)]
+    public void RentalCard_ContractButtonFitsItsTextAtAnyFontSize(float size) => Run(() =>
+    {
+        var (card, end, contract) = Infrastructure.RentalCards.Build(ControlledRentalService.Rental(9), underway: false, showRenter: false, () => Task.CompletedTask, () => Task.CompletedTask);
+        using (card)
+        using (var font = new Font("Segoe UI", size))
+        {
+            contract.Font = font;
+
+            var needed = TextRenderer.MeasureText(contract.Text, font);
+            Assert.True(needed.Width < contract.Width && needed.Height < contract.Height, $"{needed} does not fit {contract.Size} at {size} pt.");
+            Assert.True(contract.Width >= 120 && contract.Height >= 40);
+            Assert.Equal(end.Left - 10, contract.Right);
+        }
+    });
+
     /// <summary>The operation buttons below the car's picture size themselves from the font and stay inside the panel.</summary>
     [Fact]
     public void AdminPanel_OperationButtonsFitTheirText() => Run(() =>
