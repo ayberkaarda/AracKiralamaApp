@@ -9,6 +9,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- New design: an own visual identity of asphalt graphite and signal orange, a road and location pin logo
+  (`assets/logo.svg`, rasterized into `app.ico` and `logo-256.png`), headings, prices, plates and calendar days in
+  Bahnschrift, and every screen rebuilt on one frame with a header, an inline message strip, the content and a footer.
+- Light, dark and high contrast themes: `Appearance:Theme` (`Light`, `Dark` or `System`); high contrast uses the
+  Windows system colours with native controls, and open screens follow a change of high contrast or the app mode.
+- Car cards with a vehicle drawn in code in the car's colour, a plate chip and the daily price; a booking screen with
+  a live return day and total; rental cards with a stage pill; themed lists for cars, accounts, maintenance records and
+  the revenue report, whose rows carry the amount and a bar of its share; a calendar whose days show their state in
+  words, a pattern and a tint, with a ring around today.
+- Results and refusals appear inside the window instead of message boxes; questions use a themed message window.
+  Refused fields get a danger border and their message as the accessible description.
+- `tools/Screenshots`: the icon and the README screenshots at 1x and 2x, drawn offscreen with an invented fleet; the
+  README shows fourteen screens.
+- UI tests: every screen inside working areas of 1024x600, 1366x768 and 1920x1040 at text sizes 1 to 2 with long
+  names, themed controls, tab order, inline messages, palette contrast and identity, high contrast and its switch while
+  screens are open, card and calendar layout and the vehicle art.
+
 - Availability calendar of a car: every day of a month free, booked, in maintenance or past by the database's
   today, with the state written in each cell (customers for listed cars, admins for any car).
 - Maintenance and damage log for admins (migration `AddMaintenanceLog`, table `AracBakim`): records block the car's
@@ -48,6 +65,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The application is per-monitor DPI aware; windows fit their content, never open larger than the screen's working
+  area and scroll their body on a small screen.
+- Sign-up, the first admin, a password change and a booking close their window and the screen that opened them
+  reports the result; an admin who changes their own role or password returns to the sign-in, which says why.
+- Amounts group their thousands ("1.250,00 TL"). Picking a car, an account or a maintenance record works with the
+  keyboard too; loading a list again is never a choice and keeps the record in the form.
+
 - A booking refused for taken days now says the car is not available on some of the days, the same for a rental or
   maintenance. A car with maintenance history cannot be deleted either.
 - Errors are written to the log file instead of the trace output; the error dialogs are unchanged. Refused
@@ -68,7 +92,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
-- The screenshots of the original application, whose screens no longer exist; the design update brings new ones.
+- The screenshots of the original application, whose screens no longer exist; the design update brought new ones.
+- The old sign-in picture, backdrop, car placeholder and their Edge render script, and the data grids of the admin
+  screens.
 
 ### Security
 
