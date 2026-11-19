@@ -23,6 +23,7 @@ namespace AracKiralama.UI
         private readonly DataGridView _periods;
         private readonly DataGridView _cars;
         private readonly Label _total;
+        private readonly Label _note;
 
         public RevenueReportForm(IReportService reports, UserSession session)
         {
@@ -66,7 +67,9 @@ namespace AracKiralama.UI
             _cars = Grid("grdCars");
             _total = new Label { Name = "lblTotal", AutoSize = true, Margin = new Padding(0, 8, 0, 0), Font = new Font(Font, FontStyle.Bold) };
 
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6 };
+            _note = new Label { Name = "lblNote", AutoSize = true, MaximumSize = new Size(unit * 58, 0), Margin = new Padding(0, 4, 0, 0) };
+
+            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7 };
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
@@ -78,7 +81,9 @@ namespace AracKiralama.UI
             root.Controls.Add(_periods, 0, 2);
             root.Controls.Add(Caption("Araçlara göre"), 0, 3);
             root.Controls.Add(_cars, 0, 4);
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.Controls.Add(_total, 0, 5);
+            root.Controls.Add(_note, 0, 6);
             Controls.Add(root);
         }
 
@@ -140,6 +145,7 @@ namespace AracKiralama.UI
             _total.Text = string.Create(
                 DisplayFormat.Turkish,
                 $"Toplam: {report.Total.Rentals} kiralama, {report.Total.Days} gün, {DisplayFormat.Money(report.Total.Revenue)}");
+            _note.Text = report.Note;
             _export.Enabled = true;
         }
 

@@ -22,8 +22,10 @@ public sealed record RevenueLine(string Label, string? Plate, int Rentals, int D
 /// <summary>
 /// Revenue of the rentals whose pick-up day is in [<see cref="From"/>, <see cref="To"/>] (both days
 /// included): by period and by car. A rental counts with the price agreed at booking, in the period of
-/// its pick-up day; cancelled rentals earn nothing. <see cref="CreatedAt"/> is the local time by the
-/// database's clock.
+/// its pick-up day; cancelled rentals earn nothing. Only rentals picked up by <see cref="CountedUntil"/>
+/// (today by the database's clock, or <see cref="To"/> when it is earlier) count: a rental that has not
+/// started can still be cancelled without charge, so counting it would change past reports later.
+/// <see cref="CreatedAt"/> is the local time by the database's clock.
 /// </summary>
 public sealed record RevenueReport(
     DateOnly From,
@@ -32,7 +34,14 @@ public sealed record RevenueReport(
     IReadOnlyList<RevenueLine> Periods,
     IReadOnlyList<RevenueLine> Cars,
     RevenueLine Total,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    DateOnly CountedUntil)
+{
+    /// <summary>What the report counts, as the screen and the CSV file state it.</summary>
+    public string Note => string.Create(
+        CultureInfo.GetCultureInfo("tr-TR"),
+        $"Yalnızca {CountedUntil:dd.MM.yyyy} tarihine kadar teslim alınan kiralamalar sayılır; henüz başlamamış (ücretsiz iptal edilebilir) ve iptal edilmiş kiralamalar dahil değildir. Gün sayısı rezervasyondaki gündür.");
+}
 
 /// <summary>Two days of a report, both included.</summary>
 public readonly record struct ReportRange(DateOnly From, DateOnly To);
@@ -106,24 +115,33 @@ internal sealed class ReportService(
             throw new BusinessRuleException(DailyRangeTooLong);
         }
 
-        var rows = await reports.GetRevenueRowsAsync(firstDay, lastDay.AddDays(1), cancellationToken).ConfigureAwait(false);
+        // Only rentals picked up by today (the database's) count: one that has not started can still be
+        // cancelled without charge. Returned rentals were always picked up by today.
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(now, DateTimeKind.Utc), timeProvider.LocalTimeZone);
+        var today = DateOnly.FromDateTime(local);
+        var countedUntil = lastDay < today ? lastDay : today;
+        IReadOnlyList<RevenueRow> rows = countedUntil < firstDay
+            ? []
+            : await reports.GetRevenueRowsAsync(firstDay, countedUntil.AddDays(1), cancellationToken).ConfigureAwait(false);
         audit.Record(AuditEvent.RevenueReportCreated, AuditRole.Admin);
-        return Build(firstDay, lastDay, grouping, rows, local);
+        return Build(firstDay, lastDay, grouping, rows, local, countedUntil);
     }
 
     public ExportFile ToCsv(RevenueReport report) => RevenueReportExport.ToCsv(report);
 
-    /// <summary>Sums <paramref name="rows"/> by period (every period of the range, also empty ones) and by car (cars with rentals, by revenue).</summary>
-    internal static RevenueReport Build(DateOnly from, DateOnly to, RevenueGrouping grouping, IReadOnlyList<RevenueRow> rows, DateTime createdAt)
+    /// <summary>
+    /// Sums <paramref name="rows"/> by period (every period of the range, also empty ones) and by car (cars
+    /// with rentals, by revenue). A month the range covers only in part names the days it covers.
+    /// </summary>
+    internal static RevenueReport Build(DateOnly from, DateOnly to, RevenueGrouping grouping, IReadOnlyList<RevenueRow> rows, DateTime createdAt, DateOnly countedUntil)
     {
         var periods = new List<RevenueLine>();
         for (var start = PeriodStart(from, grouping); start <= to; start = Next(start, grouping))
         {
             var next = Next(start, grouping);
             var inPeriod = rows.Where(r => r.StartDate >= start && r.StartDate < next).ToList();
-            periods.Add(Line(PeriodLabel(start, grouping), null, inPeriod));
+            periods.Add(Line(PeriodLabel(start, next, grouping, from, to), null, inPeriod));
         }
 
         var cars = rows
@@ -133,7 +151,7 @@ internal sealed class ReportService(
             .ThenBy(l => l.Plate, StringComparer.Ordinal)
             .ToList();
 
-        return new RevenueReport(from, to, grouping, periods, cars, Line("Toplam", null, rows), createdAt);
+        return new RevenueReport(from, to, grouping, periods, cars, Line("Toplam", null, rows), createdAt, countedUntil);
     }
 
     private static RevenueLine Line(string label, string? plate, IReadOnlyCollection<RevenueRow> rows) =>
@@ -145,6 +163,23 @@ internal sealed class ReportService(
     private static DateOnly Next(DateOnly start, RevenueGrouping grouping) =>
         grouping == RevenueGrouping.Month ? start.AddMonths(1) : start.AddDays(1);
 
-    private static string PeriodLabel(DateOnly start, RevenueGrouping grouping) =>
-        grouping == RevenueGrouping.Month ? start.ToString("MMMM yyyy", Turkish) : start.ToString("dd.MM.yyyy", Turkish);
+    /// <summary>"Mart 2026" for a whole month, "Mart 2026 (02.03-31.03)" for the part of a month the range covers, the date for a day.</summary>
+    private static string PeriodLabel(DateOnly start, DateOnly next, RevenueGrouping grouping, DateOnly from, DateOnly to)
+    {
+        if (grouping == RevenueGrouping.Day)
+        {
+            return start.ToString("dd.MM.yyyy", Turkish);
+        }
+
+        var month = start.ToString("MMMM yyyy", Turkish);
+        var last = next.AddDays(-1);
+        if (start >= from && last <= to)
+        {
+            return month;
+        }
+
+        var first = start < from ? from : start;
+        var end = last > to ? to : last;
+        return month + " (" + first.ToString("dd.MM", Turkish) + "-" + end.ToString("dd.MM", Turkish) + ")";
+    }
 }

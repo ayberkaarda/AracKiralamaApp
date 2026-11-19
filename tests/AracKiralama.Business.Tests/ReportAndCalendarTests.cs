@@ -38,10 +38,10 @@ public sealed class ReportAndCalendarTests
             Row(3, 1, new DateOnly(2026, 3, 1), 2, 200m),
         ];
 
-        var report = ReportService.Build(new DateOnly(2026, 1, 15), new DateOnly(2026, 3, 10), RevenueGrouping.Month, rows, DateTime.MinValue);
+        var report = ReportService.Build(new DateOnly(2026, 1, 15), new DateOnly(2026, 3, 10), RevenueGrouping.Month, rows, DateTime.MinValue, new DateOnly(2026, 3, 10));
 
         Assert.Equal(
-            [new RevenueLine("Ocak 2026", null, 2, 4, 350.25m), new RevenueLine("Şubat 2026", null, 0, 0, 0m), new RevenueLine("Mart 2026", null, 1, 2, 200m)],
+            [new RevenueLine("Ocak 2026 (15.01-31.01)", null, 2, 4, 350.25m), new RevenueLine("Şubat 2026", null, 0, 0, 0m), new RevenueLine("Mart 2026 (01.03-10.03)", null, 1, 2, 200m)],
             report.Periods);
         Assert.Equal(
             [new RevenueLine("Anka Kent", "00 AR 01", 2, 5, 500m), new RevenueLine("Anka Kent", "00 AR 02", 1, 1, 50.25m)],
@@ -52,22 +52,34 @@ public sealed class ReportAndCalendarTests
     [Fact]
     public void Build_ByDay_HasOneLinePerDay()
     {
-        var report = ReportService.Build(Today, Today.AddDays(2), RevenueGrouping.Day, [Row(1, 1, Today.AddDays(1), 2, 10m)], DateTime.MinValue);
+        var report = ReportService.Build(Today, Today.AddDays(2), RevenueGrouping.Day, [Row(1, 1, Today.AddDays(1), 2, 10m)], DateTime.MinValue, Today.AddDays(2));
 
         Assert.Equal(["02.03.2026", "03.03.2026", "04.03.2026"], report.Periods.Select(p => p.Label));
         Assert.Equal([0, 1, 0], report.Periods.Select(p => p.Rentals));
     }
 
+    /// <summary>
+    /// Only rentals picked up by today (the database's) count: a later one can still be cancelled without
+    /// charge. A range in the past asks for its own half-open range, one that reaches beyond today stops at
+    /// today, and one in the future reads nothing.
+    /// </summary>
     [Fact]
-    public async Task GetRevenue_AsksForTheHalfOpenRangeOfTheChosenDays()
+    public async Task GetRevenue_CountsOnlyRentalsPickedUpByToday()
     {
-        _reports.Setup(r => r.GetRevenueRowsAsync(Today, Today.AddDays(31), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _reports.Setup(r => r.GetRevenueRowsAsync(Today, Today.AddDays(1), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _reports.Setup(r => r.GetRevenueRowsAsync(Today.AddDays(-40), Today.AddDays(-9), It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         var report = await Reports().GetRevenueAsync(Sessions.Admin, Today, Today.AddDays(30), RevenueGrouping.Day, Ct);
+        var past = await Reports().GetRevenueAsync(Sessions.Admin, Today.AddDays(-40), Today.AddDays(-10), RevenueGrouping.Day, Ct);
+        var future = await Reports().GetRevenueAsync(Sessions.Admin, Today.AddDays(1), Today.AddDays(5), RevenueGrouping.Day, Ct);
 
+        Assert.Equal((Today, Today.AddDays(-10), Today), (report.CountedUntil, past.CountedUntil, future.CountedUntil));
+        Assert.Equal(0, future.Total.Rentals);
+        Assert.Contains("02.03.2026 tarihine kadar teslim alınan", report.Note, StringComparison.Ordinal);
+        _reports.Verify(r => r.GetRevenueRowsAsync(It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
         Assert.Equal(31, report.Periods.Count);
         Assert.Equal(new DateTime(2026, 3, 2, 10, 0, 0), report.CreatedAt);
-        Assert.Equal(["report.revenue.created admin"], _audit.Entries);
+        Assert.Equal(3, _audit.Entries.Count(e => e == "report.revenue.created admin"));
     }
 
     [Theory]
@@ -88,7 +100,7 @@ public sealed class ReportAndCalendarTests
     [InlineData(0, RevenueGrouping.Day)]
     public async Task GetRevenue_TheLongestAllowedRanges_AreRead(int lastOffset, RevenueGrouping grouping)
     {
-        _reports.Setup(r => r.GetRevenueRowsAsync(Today, Today.AddDays(lastOffset + 1), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _reports.Setup(r => r.GetRevenueRowsAsync(Today, Today.AddDays(1), It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         await Reports().GetRevenueAsync(Sessions.Admin, Today, Today.AddDays(lastOffset), grouping, Ct);
     }

@@ -71,15 +71,22 @@ public sealed class SqliteOperationsTests : IAsyncLifetime
         await rentals.EndAsync(_customer, active.Id, Ct);
         var otherPrice = (await rentals.GetMyActiveRentalsAsync(_customer, Ct)).Single().Price;
 
-        var report = await _db.Get<IReportService>().GetRevenueAsync(_admin, Today, Today.AddDays(60), RevenueGrouping.Month, Ct);
+        // The rental of day 40 has not started and can still be cancelled without charge: not counted yet.
+        var reports = _db.Get<IReportService>();
+        var early = await reports.GetRevenueAsync(_admin, Today, Today.AddDays(60), RevenueGrouping.Month, Ct);
+        Assert.Equal(new RevenueLine("Toplam", null, 1, 2, 1700m), early.Total);
+        Assert.Equal(Today, early.CountedUntil);
+        Assert.Equal(Start.UtcDateTime, early.CreatedAt);
 
-        Assert.Equal(["Mart 2026", "Nisan 2026", "Mayıs 2026"], report.Periods.Select(p => p.Label));
+        _db.Clock.Advance(TimeSpan.FromDays(40));
+        var report = await reports.GetRevenueAsync(_admin, Today, Today.AddDays(60), RevenueGrouping.Month, Ct);
+
+        Assert.Equal(["Mart 2026 (02.03-31.03)", "Nisan 2026", "Mayıs 2026 (01.05-01.05)"], report.Periods.Select(p => p.Label));
         Assert.Equal([1700m, otherPrice, 0m], report.Periods.Select(p => p.Revenue));
         Assert.Equal(new RevenueLine("Toplam", null, 2, 5, 1700m + otherPrice), report.Total);
         Assert.Equal(2, report.Cars.Count);
-        Assert.Equal(Start.UtcDateTime, report.CreatedAt);
 
-        var narrow = await _db.Get<IReportService>().GetRevenueAsync(_admin, Today.AddDays(1), Today.AddDays(39), RevenueGrouping.Day, Ct);
+        var narrow = await reports.GetRevenueAsync(_admin, Today.AddDays(1), Today.AddDays(39), RevenueGrouping.Day, Ct);
         Assert.Equal(0, narrow.Total.Rentals);
     }
 

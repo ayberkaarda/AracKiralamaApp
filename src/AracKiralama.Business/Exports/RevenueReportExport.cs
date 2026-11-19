@@ -13,7 +13,8 @@ public static class RevenueReportExport
 
     /// <summary>
     /// CSV for spreadsheets (see <see cref="ExportFormat.CsvField"/>): a header, one line per period, one
-    /// per car and the total. Amounts have a decimal comma and no thousands separator.
+    /// per car, the total and a note of what the report counts. Amounts have a decimal comma and no
+    /// thousands separator.
     /// </summary>
     public static ExportFile ToCsv(RevenueReport report)
     {
@@ -32,6 +33,7 @@ public static class RevenueReportExport
         }
 
         Append(text, "Toplam", report.Total with { Label = string.Empty });
+        ExportFormat.AppendCsvLine(text, ["Not", report.Note, string.Empty, string.Empty, string.Empty, string.Empty]);
 
         var name = string.Create(
             CultureInfo.InvariantCulture,

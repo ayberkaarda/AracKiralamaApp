@@ -235,6 +235,7 @@ public sealed class OperationsUiTests
 
         Assert.Equal(200m, form.ShownReport!.Total.Revenue);
         Assert.Equal("Toplam: 1 kiralama, 2 gün, 200,00 TL", Find<Label>(form, "lblTotal").Text);
+        Assert.Equal(form.ShownReport.Note, Find<Label>(form, "lblNote").Text);
         Assert.True(form.ExportCsvAsync().Result);
         var (path, content) = Assert.Single(written);
         Assert.Equal("rapor.csv", path);

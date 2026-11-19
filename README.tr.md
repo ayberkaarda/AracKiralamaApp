@@ -65,8 +65,10 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   alamaz. Yanlış girilen kayıt silinmez, iptal edilir. Başka bir yöneticinin değişikliğinden önce açılmış bir formun
   kaydı reddedilir ve kayıt yeniden yüklenir; zamanlar veritabanının saatiyle damgalanır.
 - ✅ **Gelir raporu** ("Gelir Raporu", yönetici): iki gün arasındaki kiralamalar aylara veya günlere ve araçlara
-  göre; her aktif ya da iade edilmiş kiralama, rezervasyonda belirlenen ücretiyle alış gününün dönemine yazılır (iptal
-  edilen kiralamalar gelir getirmez). "CSV Olarak Kaydet" ekrandaki raporu ";" ayraçlı UTF-8 CSV olarak kaydeder; her
+  göre; bugüne kadar teslim alınmış her kiralama (iade edilmiş veya sürmekte olan), rezervasyonda belirlenen ücretiyle
+  alış gününün dönemine yazılır. Henüz başlamamış kiralamalar hâlâ ücretsiz iptal edilebildiği için sayılmaz, böylece
+  geçmiş bir rapor sonradan değişmez; iptal edilen kiralamalar gelir getirmez. Aralığın yalnızca bir kısmını kapsayan
+  ay kendi günleriyle adlandırılır ve gün sayısı rezervasyondaki gündür. Ekran ve CSV bunu bir notla belirtir. "CSV Olarak Kaydet" ekrandaki raporu ";" ayraçlı UTF-8 CSV olarak kaydeder; her
   alan tırnak içindedir ve `=`, `+`, `-`, `@` ya da bir kontrol karakteriyle başlayan değer formül olarak değil metin
   olarak yazılır.
 - ✅ **Kiralama sözleşmesi** (her kiralama kartında "Sözleşme"): kiralamayı, aracı ve kiracının e-posta adresini ve

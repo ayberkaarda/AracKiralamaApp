@@ -62,7 +62,10 @@ layers; database access uses EF Core, and the database is created, migrated or u
   an active rental. A record entered by mistake is cancelled, never deleted. A save from a form opened before another
   admin's change is refused and the record is loaded again; times are stamped with the database's clock.
 - ✅ **Revenue report** ("Gelir Raporu", admin): rentals by month or day and by car between two days, with the
-  agreed price of every active or returned rental in the period of its pick-up day (cancelled rentals earn nothing).
+  agreed price of every rental picked up by today (returned or under way) in the period of its pick-up day. Rentals
+  that have not started yet can still be cancelled without charge and are not counted, so a past report does not
+  change later; cancelled rentals earn nothing. A month the range covers only in part names its days, and the days
+  are the booked days. The screen and the CSV state this in a note.
   "CSV Olarak Kaydet" saves the report on the screen as UTF-8 CSV with ";" separators; every field is quoted and a
   value starting with `=`, `+`, `-`, `@` or a control character is written as text, never as a formula.
 - ✅ **Rental contract** ("Sözleşme" on every rental card): a printable HTML page with the rental, the car and the

@@ -37,7 +37,8 @@ public sealed class ExportTests
             [new RevenueLine("Mart 2026", null, 2, 5, 1250.5m)],
             [new RevenueLine("=HYPERLINK(\"x\") Kent", "00 DMO 001", 2, 5, 1250.5m)],
             new RevenueLine("Toplam", null, 2, 5, 1250.5m),
-            Created);
+            Created,
+            new DateOnly(2026, 3, 2));
 
         var file = RevenueReportExport.ToCsv(report);
 
@@ -50,6 +51,7 @@ public sealed class ExportTests
                 "\"Ay\";\"Mart 2026\";\"\";\"2\";\"5\";\"1250,50\"",
                 "\"Araç\";\"'=HYPERLINK(\"\"x\"\") Kent\";\"00 DMO 001\";\"2\";\"5\";\"1250,50\"",
                 "\"Toplam\";\"\";\"\";\"2\";\"5\";\"1250,50\"",
+                "\"Not\";\"Yalnızca 02.03.2026 tarihine kadar teslim alınan kiralamalar sayılır; henüz başlamamış (ücretsiz iptal edilebilir) ve iptal edilmiş kiralamalar dahil değildir. Gün sayısı rezervasyondaki gündür.\";\"\";\"\";\"\";\"\"",
                 string.Empty,
             ],
             lines);

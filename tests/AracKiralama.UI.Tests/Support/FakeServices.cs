@@ -334,7 +334,8 @@ internal sealed class ControlledReportService : IReportService
         [new RevenueLine("Mart 2026", null, 1, 2, total)],
         [new RevenueLine("Anka Kent", "00 DMO 001", 1, 2, total)],
         new RevenueLine("Toplam", null, 1, 2, total),
-        new DateTime(2026, 3, 2, 10, 0, 0));
+        new DateTime(2026, 3, 2, 10, 0, 0),
+        new DateOnly(2026, 3, 2));
 }
 
 /// <summary>Answers the save dialog with a fixed path (or a cancel) and records the suggested names.</summary>
