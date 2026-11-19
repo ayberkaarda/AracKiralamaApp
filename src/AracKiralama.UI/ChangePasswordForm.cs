@@ -1,11 +1,16 @@
+using System.Globalization;
 using AracKiralama.Business.Security;
 using AracKiralama.Business.Services;
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI
 {
-    /// <summary>Change of the signed-in account's own password.</summary>
-    public partial class ChangePasswordForm : Form
+    /// <summary>
+    /// Change of the signed-in account's own password. Closes with <see cref="DialogResult.OK"/> once it changed;
+    /// the window that opened it then shows <see cref="ChangedMessage"/>.
+    /// </summary>
+    public sealed class ChangePasswordForm : AppDialog
     {
         internal const string ChangedMessage =
             "Şifre başarıyla değiştirildi. Güvenliğiniz için hesabınızın başka bilgisayarlarda açık olan oturumları kapatıldı; bu pencere açık kalır.";
@@ -14,32 +19,24 @@ namespace AracKiralama.UI
         private readonly UserSession _session;
         private readonly ExclusiveOperation _change = new();
 
+        private readonly TextBox txtCurrentPassword = new() { Name = nameof(txtCurrentPassword), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly TextBox txtNewPassword = new() { Name = nameof(txtNewPassword), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly TextBox txtNewPasswordRepeat = new() { Name = nameof(txtNewPasswordRepeat), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly ThemedButton btnChange = FormLayout.Button(nameof(btnChange), "Şifreyi Değiştir", ButtonKind.Primary, Glyphs.Lock);
+        private readonly ThemedButton btnCancel = FormLayout.Button(nameof(btnCancel), "İptal", ButtonKind.Secondary);
+
         public ChangePasswordForm(IAuthService auth, UserSession session)
+            : base("Şifre değiştir", "Mevcut şifrenizle yeni bir şifre belirleyin.", Glyphs.Lock, new Size(520, 460), new Size(440, 420), modal: true)
         {
             ArgumentNullException.ThrowIfNull(auth);
             ArgumentNullException.ThrowIfNull(session);
 
             _auth = auth;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-            foreach (var box in new[] { txtCurrentPassword, txtNewPassword, txtNewPasswordRepeat })
-            {
-                box.MaxLength = PasswordPolicy.MaxLength;
-            }
-
-            AcceptButton = btnChange;
+            BuildLayout();
+            _change.HoldClosingOf(this);
+            btnChange.Click += async (_, _) => await ChangeAndCloseAsync();
         }
-
-        /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         /// <summary>Changes the password; ignored while a previous attempt is still running. Returns whether it changed.</summary>
         internal async Task<bool> ChangeAsync()
@@ -57,25 +54,50 @@ namespace AracKiralama.UI
                     finally
                     {
                         txtCurrentPassword.Clear();
-                        if (!changed)
+                        if (changed)
+                        {
+                            txtNewPassword.Clear();
+                            txtNewPasswordRepeat.Clear();
+                        }
+                        else
                         {
                             _change.FocusAfterUnlock(txtCurrentPassword);
                         }
                     }
                 },
-                btnChange);
+                btnChange,
+                btnCancel);
             return changed;
         }
 
-        private async void btnChange_Click(object? sender, EventArgs e)
+        private async Task ChangeAndCloseAsync()
         {
             if (await ChangeAsync())
             {
-                txtNewPassword.Clear();
-                txtNewPasswordRepeat.Clear();
-                Prompts.Inform(ChangedMessage);
-                Close();
+                DialogResult = DialogResult.OK;
             }
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(ChangePasswordForm);
+            var current = FormLayout.Field("&Mevcut şifre", FormLayout.Input(txtCurrentPassword));
+            var next = FormLayout.Field(
+                "&Yeni şifre",
+                FormLayout.Input(txtNewPassword),
+                string.Create(CultureInfo.CurrentCulture, $"En az {PasswordPolicy.MinLength}, en fazla {PasswordPolicy.MaxLength} karakter."));
+            var repeat = FormLayout.Field("Yeni şifre &tekrar", FormLayout.Input(txtNewPasswordRepeat));
+            current.Margin = next.Margin = repeat.Margin = new Padding(0, 0, 0, Spacing.M);
+            var card = FormLayout.Card("passwordCard", null, FormLayout.Stack("passwordForm", current, next, repeat), fill: false);
+            card.Margin = Padding.Empty;
+            Content.Controls.Add(card);
+
+            AcceptButton = btnChange;
+            CancelButton = btnCancel;
+            btnCancel.DialogResult = DialogResult.Cancel;
+            SetFooterNote("Diğer bilgisayarlardaki oturumlarınız kapanır.");
+            SetFooterButtons(btnChange, btnCancel);
+            FinishLayout();
         }
     }
 }

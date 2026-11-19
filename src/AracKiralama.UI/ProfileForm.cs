@@ -159,7 +159,10 @@ namespace AracKiralama.UI
             changePassword.Click += (_, _) =>
             {
                 using var form = _forms.Create<ChangePasswordForm>(_session);
-                form.ShowDialog(this);
+                if (form.ShowDialog(this) == DialogResult.OK)
+                {
+                    Prompts.Inform(ChangePasswordForm.ChangedMessage);
+                }
             };
             header.Controls.Add(changePassword);
         }

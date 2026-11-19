@@ -1,5 +1,6 @@
 using AracKiralama.UI.Infrastructure;
 using AracKiralama.UI.Tests.Support;
+using AracKiralama.UI.Theming;
 using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
@@ -57,7 +58,9 @@ public sealed class FocusTests
         Assert.Empty(password.Text);
         Assert.True(Find<Control>(form, "btnSignIn").Enabled);
         Assert.True(password.ContainsFocus || form.ActiveControl == password);
-        Assert.Contains(NoDialogs.Requested, r => r.Contains("Kullanıcı adı veya şifre hatalı.", StringComparison.Ordinal));
+        // The refusal is shown inside the window, without a message window that would take the focus.
+        Assert.Equal((StatusKind.Warning, "Kullanıcı adı veya şifre hatalı."), (form.StatusBar.Kind, form.StatusBar.Text));
+        Assert.DoesNotContain(NoDialogs.Requested, r => r.Contains("Kullanıcı adı veya şifre hatalı.", StringComparison.Ordinal));
     });
 
     private static void CreateHandles(Control control)

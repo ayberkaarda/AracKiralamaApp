@@ -64,8 +64,29 @@ public sealed class ExclusiveWriteTests
 
         Assert.False(second.Result);
         Assert.Equal(1, auth.RegisterCalls);
+        Assert.False(Find<Button>(form, "btnRegister").Enabled);
+        Assert.False(Find<Button>(form, "btnCancel").Enabled);
         auth.CompleteRegister();
         Assert.True(first.Result);
+        Assert.True(Find<Button>(form, "btnRegister").Enabled);
+    });
+
+    /// <summary>Empty fields are marked next to their inputs as the original form did; filling one in clears its mark.</summary>
+    [Fact]
+    public void Register_EmptyFields_AreMarkedUntilTheyAreFilledIn() => Run(() =>
+    {
+        var auth = new PendingAuthService();
+        using var form = new RegisterForm(auth);
+        Find<TextBox>(form, "txtUserName").Text = "yeni.musteri";
+        Find<TextBox>(form, "txtPassword").Text = "Gizli.Sifre1";
+
+        _ = form.RegisterAsync();
+
+        Assert.Equal(["txtEmail", "txtPhone"], form.MarkedFields);
+        Find<TextBox>(form, "txtEmail").Text = "yeni@example.com";
+        Assert.Equal(["txtPhone"], form.MarkedFields);
+        Assert.Equal(RegisterForm.EmptyField, Find<TextBox>(form, "txtPhone").AccessibleDescription);
+        auth.CompleteRegister();
     });
 
     [Fact]
