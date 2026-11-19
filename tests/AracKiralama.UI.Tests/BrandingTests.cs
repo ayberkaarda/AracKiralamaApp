@@ -1,6 +1,7 @@
 using System.Net;
 using AracKiralama.UI.Infrastructure;
 using AracKiralama.UI.Tests.Support;
+using AracKiralama.UI.Theming;
 using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
@@ -80,8 +81,58 @@ public sealed class BrandingTests
         picture.ShowCarPicture(address);
 
         Assert.False(CarPictures.TryGetAllowedUri(address, out _));
-        Assert.Same(AppAssets.CarPlaceholder, picture.Image);
+        Assert.Null(picture.Image);
     });
+
+    /// <summary>
+    /// A car without an acceptable picture shows the application's own drawing: its body style follows the model
+    /// (the same model always gets the same style) and its paint the color field, in every palette.
+    /// </summary>
+    [Fact]
+    public void VehicleArt_DrawsEveryCarInItsColorWithoutAPicture() => Run(() =>
+    {
+        Assert.Equal(VehicleArt.ShapeFor("Kent"), VehicleArt.ShapeFor(" kent "));
+        Assert.True(Models.Select(VehicleArt.ShapeFor).Distinct().Count() > 2, "Models should get different body styles.");
+        Assert.Equal(Color.FromArgb(0xC0, 0x39, 0x2B).ToArgb(), VehicleArt.PaintFor("Kırmızı").ToArgb());
+        Assert.Equal(Color.FromArgb(0x23, 0x36, 0x5F).ToArgb(), VehicleArt.PaintFor("Metalik Lacivert").ToArgb());
+        Assert.Equal(VehicleArt.PaintFor(null), VehicleArt.PaintFor("Belirsiz"));
+
+        var previous = Theme.Current;
+        try
+        {
+            foreach (var palette in new[] { ThemePalette.Light, ThemePalette.Dark, ThemePalette.HighContrast() })
+            {
+                Theme.Use(palette);
+                using var picture = new VehiclePicture { Size = new Size(240, 120) };
+                picture.ShowCar("Kent", "Kırmızı", "http://localhost/arac.png", "Anka Kent");
+                using var image = new Bitmap(240, 120);
+                picture.DrawToBitmap(image, new Rectangle(0, 0, 240, 120));
+
+                Assert.Null(picture.Image);
+                Assert.True(Colors(image) > 3, $"The {palette.Name} drawing is empty.");
+            }
+        }
+        finally
+        {
+            Theme.Use(previous);
+        }
+    });
+
+    private static readonly string[] Models = ["Kent", "Kasa", "Rota", "Pusula", "Liman", "Ova", "Yayla", "Koru"];
+
+    private static int Colors(Bitmap image)
+    {
+        var seen = new HashSet<int>();
+        for (var y = 0; y < image.Height; y += 3)
+        {
+            for (var x = 0; x < image.Width; x += 3)
+            {
+                seen.Add(image.GetPixel(x, y).ToArgb());
+            }
+        }
+
+        return seen.Count;
+    }
 
     [Theory]
     [InlineData("https://example.com/arac.png")]
