@@ -110,6 +110,22 @@ public sealed class OperationsUiTests
         Assert.All(form.DayCells, c => Assert.Equal(form.ForeColor, c.ForeColor));
     });
 
+    /// <summary>
+    /// Every state has a pattern of its own besides its tint (free days are plain), so color is never the only
+    /// sign; under high contrast every state is drawn in the system's window colors only.
+    /// </summary>
+    [Fact]
+    public void Calendar_StatesDifferByPatternAndUseTheSystemColorsUnderHighContrast()
+    {
+        var states = Enum.GetValues<DayState>();
+        var patterns = states.Select(DayPainter.Pattern).ToList();
+
+        Assert.Equal(states.Length, patterns.Distinct().Count());
+        Assert.Null(DayPainter.Pattern(DayState.Free));
+        var contrast = ThemePalette.HighContrast();
+        Assert.All(states, state => Assert.Equal((SystemColors.Window, SystemColors.WindowText), DayPainter.Colors(contrast, state)));
+    }
+
     [Theory]
     [InlineData(9f)]
     [InlineData(12f)]
