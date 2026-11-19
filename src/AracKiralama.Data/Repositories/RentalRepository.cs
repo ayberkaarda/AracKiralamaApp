@@ -94,11 +94,10 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-        // Checked first, so an account that lost the admin role learns nothing about other accounts' rentals.
-        await Actors.RequireAsync(db, actor.Actor, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
         int? ownerId = actor.AsAdmin ? null : actor.UserId;
 
-        // The car decides which lock to take; a rental of another account is the same as none.
+        // The car decides which lock to take; a rental of another account is the same as none. Only the car
+        // id is read before the lock, and a rental never moves to another car.
         var carId = await Owned(db.Rentals.AsNoTracking(), ownerId)
             .Where(r => r.Id == rentalId && r.Status == RentalStatus.Active)
             .Select(r => (int?)r.CarId)
@@ -106,10 +105,17 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
             .ConfigureAwait(false);
         if (carId is null)
         {
+            // Checked anyway, so an account that lost the admin role gets the same answer for a missing
+            // rental as for an existing one and learns nothing about other accounts' rentals.
+            await Actors.RequireAsync(db, actor.Actor, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
             return new EndRentalResult(EndRentalOutcome.NotFound);
         }
 
+        // The car's lock first, then the actor, in the same order as every other write of a car: the actor
+        // check holds a shared lock on the account row, and holding it while waiting for the car's lock
+        // could close a deadlock cycle with a car write that waits for that row.
         await Locks.CarAsync(db, carId.Value, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor.Actor, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
 
         // Read again under the lock: a concurrent end of the same rental has finished by now.
         var startDate = await Owned(db.Rentals.AsNoTracking(), ownerId)

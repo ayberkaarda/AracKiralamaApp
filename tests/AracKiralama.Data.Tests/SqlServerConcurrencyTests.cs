@@ -421,6 +421,47 @@ public sealed class SqlServerConcurrencyTests
         Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
     }
 
+    /// <summary>
+    /// Ending a rental takes the car's lock before it checks the acting account, in the same order as every
+    /// other write of a car. While it waits for a busy car lock it holds no lock on the account row, so a
+    /// change of that account (here a plain UPDATE with a short lock timeout) is not blocked behind it and
+    /// no deadlock cycle can close through the row.
+    /// </summary>
+    [Fact]
+    public async Task End_WaitingForTheCarLock_HoldsNoLockOnTheAccountRow()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var customer = await RegisterAsync(a, "iade", 1);
+        var carId = await AddCarAsync(a, admin, "00 SRA 01");
+        var receipt = await RentAsync(a, customer, carId, startOffset: 1);
+
+        await using var holder = new SqlConnection(database.ConnectionString);
+        await holder.OpenAsync(Ct);
+        await using var held = (SqlTransaction)await holder.BeginTransactionAsync(Ct);
+        await using (var take = new SqlCommand("EXEC sp_getapplock @Resource = @resource, @LockMode = 'Exclusive', @LockOwner = 'Transaction';", holder, held))
+        {
+            take.Parameters.AddWithValue("@resource", "AracKiralama.Car." + carId.ToString(CultureInfo.InvariantCulture));
+            await take.ExecuteNonQueryAsync(Ct);
+        }
+
+        var ending = Task.Run(() => a.GetRequiredService<IRentalService>().EndAsync(admin, receipt.RentalId, Ct), Ct);
+        await database.WaitForBlockedRequestsAsync(1, Ct);
+
+        // Error 1222 (lock request time out) here would mean the waiting end holds the admin's row.
+        await database.ExecuteAsync(
+            "SET LOCK_TIMEOUT 2000; UPDATE dbo.Kullanicilar SET Telefon = Telefon WHERE KullaniciID = @id;",
+            Ct,
+            ("@id", admin.UserId));
+        Assert.False(ending.IsCompleted);
+
+        await held.CommitAsync(Ct);
+        Assert.Equal(RentalEnding.Cancelled, await ending);
+        Assert.Equal(0, await ActiveAsync(database, carId));
+    }
+
     private static string Plate(string letters, int round) => "00 " + letters + " " + round.ToString("00", CultureInfo.InvariantCulture);
 
     private static Task<int> ActiveAsync(SqlServerTestDatabase database, int carId) =>
