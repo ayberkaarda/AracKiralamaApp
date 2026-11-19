@@ -127,7 +127,8 @@ internal static class ErrorReporter
             return Find<AppLockNotGrantedException>(exception) is not null ? UpgradeBusyMessage : DatabaseInitializationMessage;
         }
 
-        if (Find<AppLockNotGrantedException>(exception) is not null)
+        // A busy car lock and a deadlock victim both wrote nothing and can be tried again.
+        if (Find<AppLockNotGrantedException>(exception) is not null || DatabaseErrors.IsDeadlock(exception))
         {
             return BusyMessage;
         }

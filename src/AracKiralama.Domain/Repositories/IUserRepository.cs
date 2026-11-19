@@ -10,11 +10,11 @@ public interface IUserRepository
     Task<AccountCredentials?> FindByIdAsync(int userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The account's role as stored now, or <see langword="null"/> when the account no longer exists.
-    /// The services ask for it at the start of every operation, so a session whose account was demoted
-    /// or deleted after sign-in loses the rights at once.
+    /// The account's role and session version as stored now, or <see langword="null"/> when the account
+    /// no longer exists. The services ask for it at the start of every operation, so a session whose
+    /// account was deleted, demoted or given a new password after sign-in loses the rights at once.
     /// </summary>
-    Task<UserRole?> GetRoleAsync(int userId, CancellationToken cancellationToken = default);
+    Task<SessionState?> GetSessionStateAsync(int userId, CancellationToken cancellationToken = default);
 
     /// <summary>The account's stored name, contact data and role, or <see langword="null"/> when it does not exist.</summary>
     Task<UserSummary?> GetSummaryAsync(int userId, CancellationToken cancellationToken = default);
@@ -27,36 +27,42 @@ public interface IUserRepository
 
     /// <summary>
     /// Stores a new account and returns its id. An account added by an admin names that admin in
-    /// <paramref name="adminId"/>, who must still be an admin at the write; a sign-up passes
+    /// <paramref name="admin"/>, who must still be an admin at the write; a sign-up passes
     /// <see langword="null"/>.
     /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<int> AddAsync(User user, Actor? admin, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes an account's name, contact data and role and, when <see cref="AccountUpdate.NewPasswordHash"/>
-    /// is set, its password. The last admin cannot lose the admin role: the check and the write are one
-    /// conditional UPDATE, so two concurrent demotions cannot both succeed. Account
-    /// <paramref name="adminId"/>, the admin making the change, must still be an admin at the write,
+    /// is set, its password. The last admin cannot lose the admin role, and an account whose session
+    /// version is no longer <see cref="AccountUpdate.ExpectedVersion"/> is not changed: the checks and the
+    /// write are one conditional UPDATE, so two concurrent demotions cannot both succeed and a stale form
+    /// cannot give back a role another admin just removed. Account
+    /// <paramref name="admin"/>, the admin making the change, must still be an admin at the write,
     /// decided under the lock every role change takes.
     /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<AccountUpdateOutcome> UpdateAsync(Actor admin, AccountUpdate update, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes an account that is no admin and has no rentals, in one conditional DELETE, while account
-    /// <paramref name="adminId"/> is still an admin.
+    /// <paramref name="admin"/> is still an admin.
     /// </summary>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<AccountDeleteOutcome> DeleteAsync(Actor admin, int userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Replaces the password of <paramref name="verified"/> with <paramref name="newPasswordHash"/>, only
-    /// while the stored password is still the one that was verified.
+    /// The account's own password change: replaces the password of <paramref name="verified"/> with
+    /// <paramref name="newPasswordHash"/> and raises the session version, in one conditional UPDATE, only
+    /// while the stored password is still the one that was verified and the session version is still
+    /// <paramref name="sessionVersion"/> (the changing session's). Every other open session of the account
+    /// ends with it.
     /// </summary>
-    Task<bool> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default);
+    /// <returns>The new session version, or <see langword="null"/> when nothing was written.</returns>
+    Task<int?> ChangePasswordAsync(AccountCredentials verified, int sessionVersion, string newPasswordHash, CancellationToken cancellationToken);
 
     /// <summary>Whether any account has the admin role.</summary>
     Task<bool> AnyAdminAsync(CancellationToken cancellationToken = default);
@@ -114,8 +120,11 @@ public enum AccountFields
     Phone = 4,
 }
 
-/// <summary>An admin's change of an account.</summary>
-public sealed record AccountUpdate(int UserId, string UserName, string? Email, string? Phone, UserRole Role, string? NewPasswordHash);
+/// <summary>
+/// An admin's change of an account, made in a form that loaded the account with session version
+/// <see cref="ExpectedVersion"/>.
+/// </summary>
+public sealed record AccountUpdate(int UserId, int ExpectedVersion, string UserName, string? Email, string? Phone, UserRole Role, string? NewPasswordHash);
 
 public enum AccountUpdateOutcome
 {
@@ -124,6 +133,12 @@ public enum AccountUpdateOutcome
 
     /// <summary>The account is the only admin and would lose the role; nothing was written.</summary>
     LastAdmin = 2,
+
+    /// <summary>
+    /// The account's role or password changed since the form loaded it (its session version is no longer
+    /// <see cref="AccountUpdate.ExpectedVersion"/>); nothing was written.
+    /// </summary>
+    ChangedElsewhere = 3,
 }
 
 public enum AccountDeleteOutcome

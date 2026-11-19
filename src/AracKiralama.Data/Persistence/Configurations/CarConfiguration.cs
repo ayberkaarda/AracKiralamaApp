@@ -12,6 +12,7 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
         {
             table.HasCheckConstraint("CK_Araclar_GunlukUcret", SchemaLimits.DailyPriceCheck);
             table.HasCheckConstraint("CK_Araclar_Km", SchemaLimits.MileageCheck);
+            table.HasCheckConstraint("CK_Araclar_Surum", SchemaLimits.CarVersionCheck);
         });
 
         builder.HasKey(c => c.Id).HasName("PK_Araclar");
@@ -27,6 +28,9 @@ internal sealed class CarConfiguration : IEntityTypeConfiguration<Car>
         builder.Property(c => c.DailyPrice).HasColumnName("GunlukUcret").HasPrecision(SchemaLimits.MoneyPrecision, SchemaLimits.MoneyScale);
         builder.Property(c => c.ImageUrl).HasColumnName("Image").HasMaxLength(SchemaLimits.ImageUrlLength).IsUnicode(false);
         builder.Property(c => c.IsListed).HasColumnName("KiralamayaAcik");
+
+        // A new car gets version 1 from the database; existing cars got it from the migration.
+        builder.Property(c => c.Version).HasColumnName("Surum").HasDefaultValue(1);
 
         builder.HasIndex(c => c.Plate, "IX_Araclar_Plaka").IsUnique();
         builder.HasIndex(c => c.Brand, "IX_Araclar_Marka");

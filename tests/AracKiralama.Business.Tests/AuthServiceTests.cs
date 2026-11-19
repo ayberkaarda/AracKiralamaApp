@@ -173,7 +173,7 @@ public sealed class AuthServiceTests
         User? stored = null;
         _users.Setup(u => u.FindTakenAsync("yeni", "a@example.com", "5551234567", null, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
         _users.Setup(u => u.AddAsync(It.IsAny<User>(), null, It.IsAny<CancellationToken>()))
-            .Callback<User, int?, CancellationToken>((user, _, _) => stored = user)
+            .Callback<User, Actor?, CancellationToken>((user, _, _) => stored = user)
             .ReturnsAsync(9);
 
         await Service().RegisterAsync(" yeni ", Password, " a@example.com ", "555 123 4567", Ct);
@@ -203,14 +203,15 @@ public sealed class AuthServiceTests
     public async Task ChangePassword_WrongCurrentPassword_CountsAFailureAndChangesNothing()
     {
         var account = Account(_hasher.Hash(Password));
+        ActiveSession(7, 0);
         _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(account);
         _users.Setup(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User), "Yanlis.Sifre1", "Yeni.Sifre12", "Yeni.Sifre12", Ct));
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, 0), "Yanlis.Sifre1", "Yeni.Sifre12", "Yeni.Sifre12", Ct));
 
         Assert.Equal(AuthService.CurrentPasswordWrong, error.Message);
-        _users.Verify(u => u.ChangePasswordAsync(It.IsAny<AccountCredentials>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _users.Verify(u => u.ChangePasswordAsync(It.IsAny<AccountCredentials>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Equal(["auth.password.change_refused user"], _audit.Entries);
     }
 
@@ -219,14 +220,49 @@ public sealed class AuthServiceTests
     {
         var account = Account(_hasher.Hash(Password));
         string? stored = null;
+        ActiveSession(7, 3);
         _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(account);
-        _users.Setup(u => u.ChangePasswordAsync(account, It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<AccountCredentials, string, CancellationToken>((_, hash, _) => stored = hash)
-            .ReturnsAsync(true);
+        _users.Setup(u => u.ChangePasswordAsync(account, 3, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<AccountCredentials, int, string, CancellationToken>((_, _, hash, _) => stored = hash)
+            .ReturnsAsync(4);
+        var session = new UserSession(7, UserName, UserRole.User, 3);
 
-        await Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User), Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct);
+        await Service().ChangePasswordAsync(session, Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct);
 
         Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Yeni.Sifre12", stored!, PasswordFormat.Pbkdf2));
+
+        // This session moves on to the new version; every other session of the account still has 3.
+        Assert.Equal(4, session.SessionVersion);
+        Assert.Equal(["auth.password.changed user"], _audit.Entries);
+    }
+
+    /// <summary>A session refused for good cannot set a new password, even with the right current one.</summary>
+    [Fact]
+    public async Task ChangePassword_FromARevokedSession_IsDeniedBeforeThePasswordIsChecked()
+    {
+        ActiveSession(7, 1);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, 0), Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct));
+
+        _users.Verify(u => u.FindByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(["access.denied user"], _audit.Entries);
+    }
+
+    /// <summary>The session was refused between the check and the write: the conditional UPDATE writes nothing and the session keeps its version.</summary>
+    [Fact]
+    public async Task ChangePassword_RevokedBeforeTheWrite_IsRefusedAndTheSessionIsNotRenewed()
+    {
+        var account = Account(_hasher.Hash(Password));
+        ActiveSession(7, 0);
+        _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(account);
+        _users.Setup(u => u.ChangePasswordAsync(account, 0, It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((int?)null);
+        var session = new UserSession(7, UserName, UserRole.User, 0);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().ChangePasswordAsync(session, Password, "Yeni.Sifre12", "Yeni.Sifre12", Ct));
+
+        Assert.Equal(AuthService.CurrentPasswordWrong, error.Message);
+        Assert.Equal(0, session.SessionVersion);
     }
 
     [Theory]
@@ -236,13 +272,37 @@ public sealed class AuthServiceTests
     public async Task ChangePassword_InvalidInput_IsRejectedWithoutTouchingTheRepository(string current, string next, string repeat, string? message)
     {
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User), current, next, repeat, Ct));
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, 0), current, next, repeat, Ct));
 
         Assert.Equal(message ?? AccountRules.PasswordInvalid, error.Message);
         _users.VerifyNoOtherCalls();
     }
 
-    private AuthService Service() => new(_users.Object, _hasher, new TestDatabaseClock(_time), _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
+    /// <summary>
+    /// Every type that carries a session version needs it explicitly: a call site that forgot it would
+    /// otherwise pass 0, which every account whose role and password never changed accepts.
+    /// </summary>
+    [Theory]
+    [InlineData(typeof(UserSession))]
+    [InlineData(typeof(RentalActor))]
+    [InlineData(typeof(RentalRequest))]
+    [InlineData(typeof(AccountCredentials))]
+    [InlineData(typeof(Actor))]
+    public void SessionVersion_HasNoDefaultValue(Type type)
+    {
+        var parameters = type.GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+            .SelectMany(c => c.GetParameters())
+            .Where(p => string.Equals(p.Name, "sessionVersion", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        Assert.NotEmpty(parameters);
+        Assert.All(parameters, p => Assert.False(p.HasDefaultValue, $"{type.Name}({p.Name}) has a default value."));
+    }
+
+    private AuthService Service() => new(_users.Object, _hasher, new TestDatabaseClock(_time), new AccessGuard(_users.Object, _audit), _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
+
+    private void ActiveSession(int userId, int version) =>
+        _users.Setup(u => u.GetSessionStateAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.User, version));
 
     private void Setup(AccountCredentials account) =>
         _users.Setup(u => u.FindByUserNameAsync(UserName, It.IsAny<CancellationToken>())).ReturnsAsync(account);
@@ -252,5 +312,5 @@ public sealed class AuthServiceTests
         PasswordFormat format = PasswordFormat.Pbkdf2,
         DateTime? lockoutEnd = null,
         UserRole role = UserRole.User) =>
-        new(7, UserName, role, hash, format, 0, lockoutEnd);
+        new(7, UserName, role, hash, format, 0, lockoutEnd, 0);
 }

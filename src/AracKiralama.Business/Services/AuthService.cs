@@ -17,7 +17,12 @@ public interface IAuthService
     /// <summary>Registers a new account with the user role. The password is stored as a hash.</summary>
     Task RegisterAsync(string? userName, string? password, string? email, string? phone, CancellationToken cancellationToken = default);
 
-    /// <summary>Changes the signed-in account's own password after checking the current one.</summary>
+    /// <summary>
+    /// Changes the signed-in account's own password after checking the session and the current password.
+    /// Every other open session of the account ends with the change; <paramref name="session"/> itself
+    /// moves on to the account's new session version and keeps working.
+    /// </summary>
+    /// <exception cref="AccessDeniedException">The session was refused for good before (a role change or another password change).</exception>
     Task ChangePasswordAsync(
         UserSession session,
         string? currentPassword,
@@ -34,6 +39,7 @@ internal sealed class AuthService(
     IUserRepository users,
     IPasswordHasher passwordHasher,
     IDatabaseClock clock,
+    AccessGuard access,
     IAuditLog audit,
     IValidator<SignInInput> signInValidator,
     IValidator<SignUpInput> signUpValidator,
@@ -121,7 +127,7 @@ internal sealed class AuthService(
         }
 
         audit.Record(AuditEvent.SignInSucceeded, role);
-        return new UserSession(account.Id, account.UserName, account.Role);
+        return new UserSession(account.Id, account.UserName, account.Role, account.SessionVersion);
     }
 
     public async Task RegisterAsync(
@@ -155,7 +161,7 @@ internal sealed class AuthService(
 
         try
         {
-            await users.AddAsync(user, adminId: null, cancellationToken).ConfigureAwait(false);
+            await users.AddAsync(user, admin: null, cancellationToken).ConfigureAwait(false);
         }
         catch (DuplicateAccountException ex)
         {
@@ -178,6 +184,9 @@ internal sealed class AuthService(
         ArgumentNullException.ThrowIfNull(currentPassword);
         ArgumentNullException.ThrowIfNull(newPassword);
 
+        // A session refused for good (a role change, a password set elsewhere) cannot set a password,
+        // even when it knows the current one.
+        await access.RequireActiveAsync(session, cancellationToken).ConfigureAwait(false);
         var role = AuditCodes.Of(session.Role);
         var account = await users.FindByIdAsync(session.UserId, cancellationToken).ConfigureAwait(false);
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
@@ -196,13 +205,16 @@ internal sealed class AuthService(
             throw new BusinessRuleException(CurrentPasswordWrong);
         }
 
-        // Only the password that was just verified is replaced.
-        if (!await users.ChangePasswordAsync(account, passwordHasher.Hash(newPassword), cancellationToken).ConfigureAwait(false))
+        // Only the password that was just verified is replaced, only while this session is still current,
+        // and the new session version ends every other session of the account.
+        var newVersion = await users.ChangePasswordAsync(account, session.SessionVersion, passwordHasher.Hash(newPassword), cancellationToken).ConfigureAwait(false);
+        if (newVersion is not { } version)
         {
             audit.Record(AuditEvent.PasswordChangeRefused, role);
             throw new BusinessRuleException(CurrentPasswordWrong);
         }
 
+        session.Renew(version);
         audit.Record(AuditEvent.PasswordChanged, role);
     }
 

@@ -108,7 +108,7 @@ public sealed class ListingTests
     {
         var accounts = new FakeAccounts();
         using var form = new UserManagementPanel(accounts, Sessions.Admin) { Prompts = new RecordingPrompts() };
-        var legacy = new UserSummary(6, "eski", "eski@@ornek", "(555)1234567", UserRole.User);
+        var legacy = new UserSummary(6, "eski", "eski@@ornek", "(555)1234567", UserRole.User, 0);
 
         form.SelectUser(legacy);
         Find<TextBox>(form, "txtPassword").Text = "Yeni.Sifre12";
@@ -162,13 +162,13 @@ public sealed class ListingTests
             .Where(p => p.IsBrowsable)
             .Select(p => p.DisplayName)
             .ToList();
-        var row = new UserRow(new UserSummary(2, "ornek", "ornek@example.com", "5551234567", UserRole.User));
+        var row = new UserRow(new UserSummary(2, "ornek", "ornek@example.com", "5551234567", UserRole.User, 0));
 
         Assert.Equal(["KullaniciID", "KullaniciAdi", "Eposta", "Telefon", "Rol"], names);
         Assert.Equal("Müşteri", row.Role);
         Assert.Equal("o***@example.com", row.Email);
         Assert.Equal("555 *** ** 67", row.Phone);
-        Assert.Empty(new UserRow(new UserSummary(3, "eski", null, null, UserRole.User)).Phone);
+        Assert.Empty(new UserRow(new UserSummary(3, "eski", null, null, UserRole.User, 0)).Phone);
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public sealed class ListingTests
     {
         using var form = new UserManagementPanel(new FakeAccounts(), Sessions.Admin) { Prompts = new RecordingPrompts() };
 
-        form.SelectUser(new UserSummary(2, "ornek", "ornek@example.com", "5551234567", UserRole.User));
+        form.SelectUser(new UserSummary(2, "ornek", "ornek@example.com", "5551234567", UserRole.User, 0));
 
         Assert.Equal("ornek@example.com", Find<TextBox>(form, "txtEmail").Text);
         Assert.Empty(Find<TextBox>(form, "txtPassword").Text);
@@ -201,19 +201,85 @@ public sealed class ListingTests
         Assert.Equal(shown, AppText.DisplayName(name));
     }
 
+    /// <summary>
+    /// Admin A loaded an admin account before admin B demoted it. A's save carries the loaded version and
+    /// is refused as stale; the form then shows the account as it is now, with its new role and version.
+    /// </summary>
+    [Fact]
+    public void AccountPanel_StaleSave_ReloadsTheAccountWithItsNewRole() => Run(() =>
+    {
+        var accounts = new FakeAccounts();
+        var loaded = new UserSummary(6, "xadmin", null, null, UserRole.Admin, 0);
+        accounts.Users.Add(loaded);
+        using var form = new UserManagementPanel(accounts, Sessions.Admin) { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadUsersAsync().IsCompletedSuccessfully);
+        form.SelectUser(form.ShownUsers[0]);
+
+        accounts.Users[0] = loaded with { Role = UserRole.User, Version = 1 };
+        accounts.UpdateFailure = Business.BusinessRuleException.Stale("Kullanıcının rolü veya şifresi siz düzenlerken başka biri tarafından değiştirildi.");
+        Find<TextBox>(form, "txtPhone").Text = "5551234567";
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.Equal((6, 0), accounts.LastVersion);
+        Assert.Equal(1, form.Selected!.Version);
+        Assert.Equal(UserRole.User, form.Selected.Role);
+        Assert.Equal("Müşteri", Find<ComboBox>(form, "cmbRole").Text);
+        Assert.Contains(NoDialogs.Requested, r => r.Contains("başka biri tarafından değiştirildi", StringComparison.Ordinal));
+    });
+
+    /// <summary>An admin who changes their own password or role is told why and the panel closes as signed out.</summary>
+    [Fact]
+    public void AccountPanel_OwnPasswordChanged_SignsOutWithAClearMessage() => Run(() =>
+    {
+        var accounts = new FakeAccounts { EndsOwnSession = true };
+        var prompts = new RecordingPrompts();
+        using var form = new UserManagementPanel(accounts, Sessions.Admin) { Prompts = prompts };
+        form.SelectUser(new UserSummary(1, "yonetici", null, null, UserRole.Admin, 0));
+        Find<TextBox>(form, "txtPassword").Text = "Yeni.Sifre12";
+
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.True(form.SessionEnded);
+        Assert.Equal([UserManagementPanel.OwnSessionEndedMessage], prompts.Messages);
+    });
+
+    [Fact]
+    public void AccountPanel_OtherAccountChanged_KeepsThePanelOpen() => Run(() =>
+    {
+        var accounts = new FakeAccounts();
+        using var form = new UserManagementPanel(accounts, Sessions.Admin) { Prompts = new RecordingPrompts() };
+        form.SelectUser(new UserSummary(2, "ornek", null, null, UserRole.User, 0));
+
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.False(form.SessionEnded);
+    });
+
     private sealed class FakeAccounts : Business.Services.IAccountService
     {
+        public List<UserSummary> Users { get; } = [];
+
         public Task<IReadOnlyList<UserSummary>> GetAllAsync(Business.Services.UserSession session, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<UserSummary>>([]);
+            Task.FromResult<IReadOnlyList<UserSummary>>([.. Users]);
 
         public Task<int> AddAsync(Business.Services.UserSession session, Business.Services.AccountInput input, CancellationToken cancellationToken = default) => Task.FromResult(1);
 
         public Business.Services.AccountInput? LastUpdate { get; private set; }
 
-        public Task UpdateAsync(Business.Services.UserSession session, int userId, Business.Services.AccountInput input, CancellationToken cancellationToken = default)
+        /// <summary>The account and the version the last change was sent with.</summary>
+        public (int UserId, int Version)? LastVersion { get; private set; }
+
+        /// <summary>Thrown by changes instead of completing them.</summary>
+        public Exception? UpdateFailure { get; set; }
+
+        /// <summary>What the next successful change answers: whether it ended the admin's own session.</summary>
+        public bool EndsOwnSession { get; set; }
+
+        public Task<bool> UpdateAsync(Business.Services.UserSession session, int userId, int expectedVersion, Business.Services.AccountInput input, CancellationToken cancellationToken = default)
         {
             LastUpdate = input;
-            return Task.CompletedTask;
+            LastVersion = (userId, expectedVersion);
+            return UpdateFailure is { } failure ? Task.FromException<bool>(failure) : Task.FromResult(EndsOwnSession);
         }
 
         public Task DeleteAsync(Business.Services.UserSession session, int userId, CancellationToken cancellationToken = default) => Task.CompletedTask;

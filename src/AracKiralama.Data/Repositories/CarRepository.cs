@@ -42,7 +42,7 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
         return await db.Cars.AsNoTracking().SingleOrDefaultAsync(c => c.Id == carId, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<int> AddAsync(int adminId, Car car, CancellationToken cancellationToken = default)
+    public async Task<int> AddAsync(Actor admin, Car car, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(car);
 
@@ -50,7 +50,7 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
         {
             await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+            await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
 
             var entity = Copy(car);
             db.Cars.Add(entity);
@@ -67,7 +67,7 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
         }
     }
 
-    public async Task<CarUpdateOutcome> UpdateAsync(int adminId, Car car, CancellationToken cancellationToken = default)
+    public async Task<CarUpdateOutcome> UpdateAsync(Actor admin, Car car, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(car);
 
@@ -79,27 +79,36 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
             // A booking of this car checks the daily price under the same lock, so it sees either the old
             // price (and commits first) or the new one (and is refused as changed).
             await Locks.CarAsync(db, car.Id, cancellationToken).ConfigureAwait(false);
-            await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+            await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
 
-            var stored = await db.Cars.SingleOrDefaultAsync(c => c.Id == car.Id, cancellationToken).ConfigureAwait(false);
-            if (stored is null)
+            // The WHERE clause is the final decision: a car changed since the form loaded it (another
+            // admin's new price or listing) matches no row, so a stale form never writes the old values back.
+            var (id, expectedVersion) = (car.Id, car.Version);
+            var updated = await db.Cars
+                .Where(c => c.Id == id && c.Version == expectedVersion)
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(c => c.Brand, car.Brand)
+                        .SetProperty(c => c.Model, car.Model)
+                        .SetProperty(c => c.Year, car.Year)
+                        .SetProperty(c => c.Transmission, car.Transmission)
+                        .SetProperty(c => c.FuelType, car.FuelType)
+                        .SetProperty(c => c.Mileage, car.Mileage)
+                        .SetProperty(c => c.Color, car.Color)
+                        .SetProperty(c => c.Plate, car.Plate)
+                        .SetProperty(c => c.DailyPrice, car.DailyPrice)
+                        .SetProperty(c => c.ImageUrl, car.ImageUrl)
+                        .SetProperty(c => c.IsListed, car.IsListed)
+                        .SetProperty(c => c.Version, c => c.Version + 1),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (updated != 1)
             {
-                return CarUpdateOutcome.NotFound;
+                return await db.Cars.AnyAsync(c => c.Id == id, cancellationToken).ConfigureAwait(false)
+                    ? CarUpdateOutcome.ChangedElsewhere
+                    : CarUpdateOutcome.NotFound;
             }
 
-            stored.Brand = car.Brand;
-            stored.Model = car.Model;
-            stored.Year = car.Year;
-            stored.Transmission = car.Transmission;
-            stored.FuelType = car.FuelType;
-            stored.Mileage = car.Mileage;
-            stored.Color = car.Color;
-            stored.Plate = car.Plate;
-            stored.DailyPrice = car.DailyPrice;
-            stored.ImageUrl = car.ImageUrl;
-            stored.IsListed = car.IsListed;
-
-            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             return CarUpdateOutcome.Updated;
         }
@@ -110,19 +119,20 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
         }
     }
 
-    public async Task<CarDeleteOutcome> DeleteAsync(int adminId, int carId, CancellationToken cancellationToken = default)
+    public async Task<CarDeleteOutcome> DeleteAsync(Actor admin, int carId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await Locks.CarAsync(db, carId, cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
 
         if (!await db.Cars.AnyAsync(c => c.Id == carId, cancellationToken).ConfigureAwait(false))
         {
             return CarDeleteOutcome.NotFound;
         }
 
-        if (await db.Rentals.AnyAsync(r => r.CarId == carId, cancellationToken).ConfigureAwait(false))
+        if (await db.Rentals.AnyAsync(r => r.CarId == carId, cancellationToken).ConfigureAwait(false)
+            || await db.Maintenance.AnyAsync(m => m.CarId == carId, cancellationToken).ConfigureAwait(false))
         {
             return CarDeleteOutcome.HasRentals;
         }

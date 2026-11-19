@@ -11,12 +11,14 @@ internal static class RentalCards
     /// <summary>
     /// A card with the car's picture, the rental's days and price and the button that ends it: "İptal
     /// Et" before the pick-up day, "İade Al" once the rental is under way. With
-    /// <paramref name="showRenter"/> the account's name and id are shown (admin only).
+    /// <paramref name="showRenter"/> the account's name and id are shown (admin only). "Sözleşme" saves the
+    /// rental's printable contract.
     /// </summary>
-    public static (Panel Card, Button EndButton) Build(RentalDetails rental, bool underway, bool showRenter, Func<Task> end)
+    public static (Panel Card, Button EndButton, Button ContractButton) Build(RentalDetails rental, bool underway, bool showRenter, Func<Task> end, Func<Task> contract)
     {
         ArgumentNullException.ThrowIfNull(rental);
         ArgumentNullException.ThrowIfNull(end);
+        ArgumentNullException.ThrowIfNull(contract);
 
         var card = new Panel { Size = new Size(Width, Height), BackColor = Color.FromArgb(230, 230, 230) };
 
@@ -53,7 +55,37 @@ internal static class RentalCards
         };
         button.Click += async (_, _) => await end();
         card.Controls.Add(button);
-        return (card, button);
+
+        // System colours: the button keeps the look the theme, also high contrast, gives it. It sizes itself
+        // from its font (never smaller than the original 120 x 40) and keeps its right edge next to the end
+        // button, so a large font or scale grows it to the left instead of clipping the text.
+        var contractButton = new Button
+        {
+            Name = "btnContract",
+            Text = "Sözleşme",
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(120, 40),
+            Padding = new Padding(4, 0, 4, 0),
+            UseVisualStyleBackColor = true,
+        };
+        contractButton.Click += async (_, _) => await contract();
+        card.Controls.Add(contractButton);
+        void Place() => contractButton.Location = new Point(button.Left - 10 - contractButton.Width, button.Top);
+        contractButton.SizeChanged += (_, _) => Place();
+        Place();
+
+        if (SystemInformation.HighContrast)
+        {
+            // The card's own grey would hide the theme's colours.
+            card.BackColor = SystemColors.Control;
+            foreach (var label in card.Controls.OfType<Label>())
+            {
+                label.ForeColor = SystemColors.ControlText;
+            }
+        }
+
+        return (card, button, contractButton);
     }
 
     /// <summary>The question asked before a rental is ended.</summary>

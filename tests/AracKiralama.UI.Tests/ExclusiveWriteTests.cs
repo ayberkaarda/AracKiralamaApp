@@ -93,7 +93,7 @@ public sealed class ExclusiveWriteTests
         var cars = new ControlledCarService();
         var rentals = new ControlledRentalService();
         var prompts = new RecordingPrompts();
-        using var form = new RentalForm(cars, rentals, Sessions.User, 1) { Prompts = prompts };
+        using var form = new RentalForm(cars, rentals, new NoFormsFactory(), Sessions.User, 1) { Prompts = prompts };
         Assert.True(form.LoadCarAsync().IsCompletedSuccessfully);
         Find<TextBox>(form, "txtDays").Text = "3";
         Find<DateTimePicker>(form, "dtpStart").Value = new DateTime(2026, 3, 10);
@@ -118,7 +118,7 @@ public sealed class ExclusiveWriteTests
     public void Rent_ShowsTheTakenDaysAndCapsTheDaysToTheSettings() => Run(() =>
     {
         var rentals = new ControlledRentalService();
-        using var form = new RentalForm(new ControlledCarService(), rentals, Sessions.User, 1) { Prompts = new RecordingPrompts() };
+        using var form = new RentalForm(new ControlledCarService(), rentals, new NoFormsFactory(), Sessions.User, 1) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadCarAsync().IsCompletedSuccessfully);
         Find<TextBox>(form, "txtDays").Text = "999";
 
@@ -133,7 +133,7 @@ public sealed class ExclusiveWriteTests
     public void EndRental_EveryEndButtonStaysDisabledUntilTheEndFinishes() => Run(() =>
     {
         var rentals = new ControlledRentalService();
-        using var form = new ProfileForm(rentals, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var form = new ProfileForm(rentals, new ControlledContractService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadRentalsAsync().IsCompletedSuccessfully);
         Assert.Equal(2, form.EndButtons.Count);
         Assert.All(form.EndButtons, b => Assert.Equal("Kiralamayı İptal Et", b.Text));
@@ -156,7 +156,7 @@ public sealed class ExclusiveWriteTests
     public void AdminEndRental_SecondClickWhilePending_IsIgnored() => Run(() =>
     {
         var rentals = new ControlledRentalService();
-        using var form = new RentedCarsPanel(rentals, new ControlledCarService(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        using var form = new RentedCarsPanel(rentals, new ControlledCarService(), new ControlledContractService(), Sessions.Admin) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadRentalsAsync().IsCompletedSuccessfully);
 
         _ = form.EndAsync(form.ShownRentals[0]);
@@ -176,8 +176,8 @@ public sealed class ExclusiveWriteTests
         const string NotFound = "Kiralama bulunamadı veya zaten sona ermiş.";
         var shownBefore = NoDialogs.Requested.Count(r => r.Contains(NotFound, StringComparison.Ordinal));
         var rentals = new ControlledRentalService();
-        using var profile = new ProfileForm(rentals, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
-        using var panel = new RentedCarsPanel(rentals, new ControlledCarService(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        using var profile = new ProfileForm(rentals, new ControlledContractService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var panel = new RentedCarsPanel(rentals, new ControlledCarService(), new ControlledContractService(), Sessions.Admin) { Prompts = new RecordingPrompts() };
         Assert.True(profile.LoadRentalsAsync().IsCompletedSuccessfully);
         Assert.True(panel.LoadRentalsAsync().IsCompletedSuccessfully);
         rentals.Rentals.RemoveAt(0);
@@ -200,7 +200,7 @@ public sealed class ExclusiveWriteTests
     public void Rent_RefusedAsOverlapping_ShowsTheTakenDaysAgain() => Run(() =>
     {
         var rentals = new ControlledRentalService();
-        using var form = new RentalForm(new ControlledCarService(), rentals, Sessions.User, 1) { Prompts = new RecordingPrompts() };
+        using var form = new RentalForm(new ControlledCarService(), rentals, new NoFormsFactory(), Sessions.User, 1) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadCarAsync().IsCompletedSuccessfully);
         rentals.Booked.Add(new(new DateOnly(2026, 3, 10), new DateOnly(2026, 3, 12)));
 
@@ -217,7 +217,7 @@ public sealed class ExclusiveWriteTests
     [Fact]
     public void UpdateCar_DeletedMeanwhile_RefreshesTheListAndClearsTheForm() => Run(() =>
     {
-        var cars = new ControlledCarService { UpdateFailure = new BusinessRuleException("Araç bulunamadı.") };
+        var cars = new ControlledCarService { UpdateFailure = BusinessRuleException.Stale("Araç bulunamadı.") };
         using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadCarsAsync().IsCompletedSuccessfully);
         form.SelectCar(cars.Cars[0]);
@@ -229,6 +229,35 @@ public sealed class ExclusiveWriteTests
         Assert.Null(form.SelectedCarId);
         Assert.Empty(Find<TextBox>(form, "txtBrand").Text);
         Assert.False(Find<Button>(form, "btnUpdateCar").Enabled);
+    });
+
+    /// <summary>
+    /// Another admin raised the price while this form was open: the save carries the loaded version, is
+    /// refused as stale, and the form then shows the car with the other admin's price and version.
+    /// </summary>
+    [Fact]
+    public void UpdateCar_ChangedElsewhere_ReloadsTheCarWithItsNewVersion() => Run(() =>
+    {
+        var cars = new ControlledCarService();
+        cars.Cars[0].Version = 1;
+        using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadCarsAsync().IsCompletedSuccessfully);
+        form.SelectCar(cars.Cars[0]);
+        var changed = ControlledCarService.Car(1, "Anka", "Kent");
+        changed.DailyPrice = 1200m;
+        changed.Version = 2;
+        cars.Cars[0] = changed;
+        cars.UpdateFailure = BusinessRuleException.Stale("Araç siz düzenlerken başka biri tarafından değiştirildi.");
+        Find<TextBox>(form, "txtColor").Text = "Kırmızı";
+
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.Equal((1, 1), cars.LastVersion);
+        Assert.Equal(1, form.SelectedCarId);
+        Assert.Equal(2, form.SelectedCarVersion);
+        Assert.Equal(DisplayFormat.MoneyInput(1200m), Find<TextBox>(form, "txtDailyPrice").Text);
+        Assert.Equal("Beyaz", Find<TextBox>(form, "txtColor").Text);
+        Assert.True(Find<Button>(form, "btnUpdateCar").Enabled);
     });
 
     [Fact]

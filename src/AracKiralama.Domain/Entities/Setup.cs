@@ -38,10 +38,18 @@ public sealed record AccountCredentials(
     string PasswordHash,
     PasswordFormat PasswordFormat,
     int FailedLoginCount,
-    DateTime? LockoutEnd);
+    DateTime? LockoutEnd,
+    int SessionVersion);
 
 /// <summary>A usable setup key, as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);
 
-/// <summary>An account as the admin's account list shows it; the password never leaves the database.</summary>
-public sealed record UserSummary(int Id, string UserName, string? Email, string? Phone, UserRole Role);
+/// <summary>What every operation checks a session against: the stored role and session version.</summary>
+public sealed record SessionState(UserRole Role, int SessionVersion);
+
+/// <summary>
+/// An account as the admin's account list shows it; the password never leaves the database.
+/// <see cref="Version"/> is the account's session version when it was read: a change sends it back, so
+/// a form loaded before a role or password change elsewhere cannot write over that change.
+/// </summary>
+public sealed record UserSummary(int Id, string UserName, string? Email, string? Phone, UserRole Role, int Version);

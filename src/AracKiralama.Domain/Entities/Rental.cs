@@ -71,3 +71,35 @@ public readonly record struct BookedRange(DateOnly StartDate, DateOnly EndDate)
     /// </summary>
     public bool Overlaps(DateOnly startDate, DateOnly endDate) => StartDate < endDate && startDate < EndDate;
 }
+
+/// <summary>Why a car's days are taken.</summary>
+public enum BlockKind
+{
+    /// <summary>An active rental holds the days.</summary>
+    Rental = 0,
+
+    /// <summary>An active maintenance or damage record holds the days.</summary>
+    Maintenance = 1,
+}
+
+/// <summary>Days [<see cref="StartDate"/>, <see cref="EndDate"/>) of a car that cannot be booked, and why.</summary>
+public readonly record struct BlockedRange(DateOnly StartDate, DateOnly EndDate, BlockKind Kind);
+
+/// <summary>
+/// What a rental contract shows: the rental, its car and the renter's contact data. The sign-in name is not
+/// part of it: it is half of the credentials and a contract is printed and handed out.
+/// </summary>
+public sealed record ContractData(
+    int RentalId,
+    RentalStatus Status,
+    string Brand,
+    string Model,
+    int Year,
+    string Color,
+    string Plate,
+    string? RenterEmail,
+    string? RenterPhone,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    DateOnly? ReturnedOn,
+    decimal Price);

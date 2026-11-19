@@ -168,12 +168,12 @@ public sealed class SqlServerConcurrencyTests
         var ySession = await auth.SignInAsync("yadmin", Password, Ct);
 
         // The founder steps down, so x and y are the only admins.
-        await accounts.UpdateAsync(xSession, founder.UserId, new AccountInput("yonetici", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(xSession, founder.UserId, await AccountVersionAsync(a, founder.UserId), new AccountInput("yonetici", null, null, null, UserRole.User), Ct);
 
         var results = await RaceAsync(
         [
-            () => a.GetRequiredService<IAccountService>().UpdateAsync(xSession, y, new AccountInput("yadmin", null, null, null, UserRole.User), Ct),
-            () => b.GetRequiredService<IAccountService>().UpdateAsync(ySession, x, new AccountInput("xadmin", null, null, null, UserRole.User), Ct),
+            () => a.GetRequiredService<IAccountService>().UpdateAsync(xSession, y, 0, new AccountInput("yadmin", null, null, null, UserRole.User), Ct),
+            () => b.GetRequiredService<IAccountService>().UpdateAsync(ySession, x, 0, new AccountInput("xadmin", null, null, null, UserRole.User), Ct),
         ]);
 
         Assert.Single(results, r => r is null);
@@ -201,9 +201,9 @@ public sealed class SqlServerConcurrencyTests
         await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 
         var promoting = bApp.GetRequiredService<IAccountService>().UpdateAsync(
-            bSession, customer.UserId, new AccountInput("uye", null, "uye@example.com", "5540000001", UserRole.Admin), Ct);
+            bSession, customer.UserId, 0, new AccountInput("uye", null, "uye@example.com", "5540000001", UserRole.Admin), Ct);
         await gate.WaitUntilReachedAsync(Ct);
-        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
         gate.Release();
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => promoting);
@@ -227,13 +227,105 @@ public sealed class SqlServerConcurrencyTests
         await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 
         var changing = bApp.GetRequiredService<ICarService>().UpdateAsync(
-            bSession, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 DMT 01", "1", null, true), Ct);
+            bSession, carId, await CarVersionAsync(a, carId), new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 DMT 01", "1", null, true), Ct);
         await gate.WaitUntilReachedAsync(Ct);
-        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
         gate.Release();
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => changing);
         Assert.Equal(100, await database.ScalarAsync("SELECT CAST(GunlukUcret AS int) FROM dbo.Araclar WHERE AracID = @id", Ct, ("@id", carId)));
+    }
+
+    /// <summary>
+    /// Admin B's car change waits at the car's lock while the founder demotes B and promotes B again. B is
+    /// an admin again when the change gets the lock, but its session is from before the change: the write
+    /// checks the session version inside its transaction and changes nothing.
+    /// </summary>
+    [Fact]
+    public async Task UpdateCar_ByAnAdminDemotedAndPromotedAgainMeanwhile_IsRefused()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var founder = await SetUpAdminAsync(a);
+        var accounts = a.GetRequiredService<IAccountService>();
+        var b = await accounts.AddAsync(founder, new AccountInput("badmin", Password, null, null, UserRole.Admin), Ct);
+        var bSession = await a.GetRequiredService<IAuthService>().SignInAsync("badmin", Password, Ct);
+        var carId = await AddCarAsync(a, founder, "00 SRM 01");
+        var gate = CommandGate.BeforeAppLock("AracKiralama.Car." + carId.ToString(CultureInfo.InvariantCulture));
+        await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var changing = bApp.GetRequiredService<ICarService>().UpdateAsync(
+            bSession, carId, await CarVersionAsync(a, carId), new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 SRM 01", "1", null, true), Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.Admin), Ct);
+        gate.Release();
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => changing);
+        Assert.Equal(100, await database.ScalarAsync("SELECT CAST(GunlukUcret AS int) FROM dbo.Araclar WHERE AracID = @id", Ct, ("@id", carId)));
+        Assert.Equal(2, await database.ScalarAsync("SELECT OturumSurumu FROM dbo.Kullanicilar WHERE KullaniciID = @id", Ct, ("@id", b)));
+    }
+
+    /// <summary>
+    /// Two admins loaded the same car and save at once from two application instances: exactly one change
+    /// is stored, the other is refused as stale, and the version rises once.
+    /// </summary>
+    [Fact]
+    public async Task UpdateCar_TwoAdminsSaveTheSameLoadedVersion_ExactlyOneWins()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        await using var b = database.BuildServices();
+        var admin = await SetUpAdminAsync(a);
+
+        for (var round = 0; round < Rounds; round++)
+        {
+            var plate = Plate("VR", round);
+            var carId = await AddCarAsync(a, admin, plate);
+            var version = await CarVersionAsync(a, carId);
+
+            var results = await RaceAsync(
+            [
+                () => a.GetRequiredService<ICarService>().UpdateAsync(admin, carId, version, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", plate, "200", null, true), Ct),
+                () => b.GetRequiredService<ICarService>().UpdateAsync(admin, carId, version, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", plate, "300", null, false), Ct),
+            ]);
+
+            Assert.Single(results, r => r is null);
+            var refused = Assert.IsType<BusinessRuleException>(Assert.Single(results, r => r is not null));
+            Assert.Equal((CarService.ChangedElsewhere, true), (refused.Message, refused.IsStale));
+            Assert.Equal(version + 1, await CarVersionAsync(a, carId));
+        }
+    }
+
+    /// <summary>
+    /// Admin A's change has passed the service's version check and waits for the car's lock while admin B
+    /// raises the price. A's conditional UPDATE then finds a newer version and writes nothing.
+    /// </summary>
+    [Fact]
+    public async Task UpdateCar_ChangedWhileWaitingForTheLock_IsRefusedAsStale()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var carId = await AddCarAsync(a, admin, "00 VRS 01");
+        var gate = CommandGate.BeforeAppLock("AracKiralama.Car." + carId.ToString(CultureInfo.InvariantCulture));
+        await using var aApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var stale = aApp.GetRequiredService<ICarService>().UpdateAsync(
+            admin, carId, 1, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Kırmızı", "00 VRS 01", "100", null, true), Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        await a.GetRequiredService<ICarService>().UpdateAsync(
+            admin, carId, 1, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 VRS 01", "1200", null, false), Ct);
+        gate.Release();
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => stale);
+        Assert.Equal(CarService.ChangedElsewhere, error.Message);
+        Assert.Equal(1200, await database.ScalarAsync("SELECT CAST(GunlukUcret AS int) FROM dbo.Araclar WHERE AracID = @id", Ct, ("@id", carId)));
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Araclar WHERE AracID = @id AND (KiralamayaAcik = 1 OR Renk <> N'Gri')", Ct, ("@id", carId)));
+        Assert.Equal(2, await CarVersionAsync(a, carId));
     }
 
     /// <summary>
@@ -287,7 +379,7 @@ public sealed class SqlServerConcurrencyTests
         await using var changing = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 
         var change = changing.GetRequiredService<ICarService>().UpdateAsync(
-            admin, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 YRS 02", "200", null, true), Ct);
+            admin, carId, await CarVersionAsync(a, carId), new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 YRS 02", "200", null, true), Ct);
         await gate.WaitUntilReachedAsync(Ct);
         var booking = Task.Run(() => rentals.RentAsync(customer, quote, Ct), Ct);
         await database.WaitForBlockedRequestsAsync(1, Ct);
@@ -327,6 +419,100 @@ public sealed class SqlServerConcurrencyTests
         await delete;
         Assert.Equal(RentalService.CarNotFound, (await Assert.ThrowsAsync<BusinessRuleException>(() => booking)).Message);
         Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
+    }
+
+    /// <summary>
+    /// Ending a rental takes the car's lock before it checks the acting account, in the same order as every
+    /// other write of a car. While it waits for a busy car lock it holds no lock on the account row, so a
+    /// change of that account (here a plain UPDATE with a short lock timeout) is not blocked behind it and
+    /// no deadlock cycle can close through the row.
+    /// </summary>
+    [Fact]
+    public async Task End_WaitingForTheCarLock_HoldsNoLockOnTheAccountRow()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var customer = await RegisterAsync(a, "iade", 1);
+        var carId = await AddCarAsync(a, admin, "00 SRA 01");
+        var receipt = await RentAsync(a, customer, carId, startOffset: 1);
+
+        await using var holder = new SqlConnection(database.ConnectionString);
+        await holder.OpenAsync(Ct);
+        await using var held = (SqlTransaction)await holder.BeginTransactionAsync(Ct);
+        await using (var take = new SqlCommand("EXEC sp_getapplock @Resource = @resource, @LockMode = 'Exclusive', @LockOwner = 'Transaction';", holder, held))
+        {
+            take.Parameters.AddWithValue("@resource", "AracKiralama.Car." + carId.ToString(CultureInfo.InvariantCulture));
+            await take.ExecuteNonQueryAsync(Ct);
+        }
+
+        var ending = Task.Run(() => a.GetRequiredService<IRentalService>().EndAsync(admin, receipt.RentalId, Ct), Ct);
+        await database.WaitForBlockedRequestsAsync(1, Ct);
+
+        // Error 1222 (lock request time out) here would mean the waiting end holds the admin's row.
+        await database.ExecuteAsync(
+            "SET LOCK_TIMEOUT 2000; UPDATE dbo.Kullanicilar SET Telefon = Telefon WHERE KullaniciID = @id;",
+            Ct,
+            ("@id", admin.UserId));
+        Assert.False(ending.IsCompleted);
+
+        await held.CommitAsync(Ct);
+        Assert.Equal(RentalEnding.Cancelled, await ending);
+        Assert.Equal(0, await ActiveAsync(database, carId));
+    }
+
+    /// <summary>
+    /// A transaction chosen as a deadlock victim (error 1205) wrote nothing and can be tried again; it is
+    /// recognised so the screen answers with the busy message instead of a database failure.
+    /// </summary>
+    [Fact]
+    public async Task DeadlockVictim_IsRecognised()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var customer = await RegisterAsync(a, "kilit", 1);
+
+        await using var first = new SqlConnection(database.ConnectionString);
+        await using var second = new SqlConnection(database.ConnectionString);
+        await first.OpenAsync(Ct);
+        await second.OpenAsync(Ct);
+        await using var firstTransaction = (SqlTransaction)await first.BeginTransactionAsync(Ct);
+        await using var secondTransaction = (SqlTransaction)await second.BeginTransactionAsync(Ct);
+        await TouchAsync(first, firstTransaction, admin.UserId);
+        await TouchAsync(second, secondTransaction, customer.UserId);
+
+        // Each waits for the row the other holds: SQL Server ends one of them with error 1205.
+        var results = await Task.WhenAll(
+            CaptureAsync(() => TouchAsync(first, firstTransaction, customer.UserId)),
+            CaptureAsync(() => TouchAsync(second, secondTransaction, admin.UserId)));
+
+        var victim = Assert.Single(results, r => r is not null);
+        Assert.True(DatabaseErrors.IsDeadlock(victim));
+        Assert.True(DatabaseErrors.IsDeadlock(new InvalidOperationException("wrapped", victim)));
+        Assert.False(DatabaseErrors.IsDeadlock(new TimeoutException()));
+
+        static async Task TouchAsync(SqlConnection connection, SqlTransaction transaction, int id)
+        {
+            await using var command = new SqlCommand("UPDATE dbo.Kullanicilar SET Telefon = Telefon WHERE KullaniciID = @id;", connection, transaction);
+            command.Parameters.AddWithValue("@id", id);
+            await command.ExecuteNonQueryAsync(Ct);
+        }
+
+        static async Task<Exception?> CaptureAsync(Func<Task> operation)
+        {
+            try
+            {
+                await Task.Run(operation, Ct);
+                return null;
+            }
+            catch (SqlException ex)
+            {
+                return ex;
+            }
+        }
     }
 
     private static string Plate(string letters, int round) => "00 " + letters + " " + round.ToString("00", CultureInfo.InvariantCulture);

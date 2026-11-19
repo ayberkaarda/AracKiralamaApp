@@ -66,6 +66,24 @@ internal static class SchemaLimits
     /// </summary>
     public const string ActiveRentalFilter = "[Durum] = 0";
 
+    /// <summary>Size of a maintenance or damage description.</summary>
+    public const int MaintenanceDescriptionLength = 500;
+
+    /// <summary>Values of <see cref="Domain.Entities.MaintenanceKind"/>: 0 maintenance, 1 damage.</summary>
+    public const string MaintenanceKindCheck = "[Tur] IN (0, 1)";
+
+    /// <summary>Values of <see cref="Domain.Entities.MaintenanceStatus"/>: 0 active, 1 cancelled.</summary>
+    public const string MaintenanceStatusCheck = "[Durum] IN (0, 1)";
+
+    /// <summary>A maintenance record covers at least one day.</summary>
+    public const string MaintenanceDatesCheck = "[BitisTarihi] > [BaslangicTarihi]";
+
+    public const string MaintenanceCostCheck = "[Maliyet] >= 0";
+
+    public const string MaintenanceVersionCheck = "[Surum] >= 1";
+
+    public const string CarVersionCheck = "[Surum] >= 1";
+
     public const string EmailFilter = "[Eposta] IS NOT NULL";
     public const string PhoneFilter = "[Telefon] IS NOT NULL";
 }

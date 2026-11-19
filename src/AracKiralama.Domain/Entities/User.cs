@@ -31,6 +31,14 @@ public sealed class User
 
     /// <summary>UTC time until which sign-in is refused, or <see langword="null"/>.</summary>
     public DateTime? LockoutEnd { get; set; }
+
+    /// <summary>
+    /// Raised by every change of the account's role, by every password an admin sets and by the account's
+    /// own password change. A session keeps the value it was issued with and is refused once the stored
+    /// value differs, so undoing a change later (promoting a demoted admin again) never brings an old
+    /// session back. The session that changed its own password moves on to the new value.
+    /// </summary>
+    public int SessionVersion { get; set; }
 }
 
 /// <summary>What an account may do (column Rol, stored as "Kullanici" or "Admin").</summary>

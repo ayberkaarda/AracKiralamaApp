@@ -59,6 +59,22 @@ internal static class TestServices
             new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", plate, dailyPrice, null, true),
             TestContext.Current.CancellationToken);
 
+    /// <summary>The account's session version as stored now, as the admin's form loads it with the account.</summary>
+    public static async Task<int> AccountVersionAsync(IServiceProvider provider, int userId)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await provider.GetRequiredService<IDbContextFactory<AracDbContext>>().CreateDbContextAsync(ct);
+        return await db.Users.Where(u => u.Id == userId).Select(u => u.SessionVersion).SingleAsync(ct);
+    }
+
+    /// <summary>The car's version as stored now, as the admin's form loads it with the car.</summary>
+    public static async Task<int> CarVersionAsync(IServiceProvider provider, int carId)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var db = await provider.GetRequiredService<IDbContextFactory<AracDbContext>>().CreateDbContextAsync(ct);
+        return await db.Cars.Where(c => c.Id == carId).Select(c => c.Version).SingleAsync(ct);
+    }
+
     /// <summary>Books <paramref name="carId"/> from today plus <paramref name="startOffset"/> days for <paramref name="days"/> days.</summary>
     public static async Task<RentalReceipt> RentAsync(IServiceProvider provider, UserSession session, int carId, int startOffset = 0, int days = 3)
     {

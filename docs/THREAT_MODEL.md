@@ -14,13 +14,16 @@ measures only; it is not a legal assessment.
   - Accounts: user names, e-mail addresses, phone numbers, roles, passwords and their stored hashes; sign-in
     counters and lockout times.
   - Cars with plates and daily prices; rentals with pick-up and return days, prices and status.
+  - The maintenance and damage log of the cars (days, descriptions, costs) and the revenue it implies.
+  - Exported files: revenue reports (CSV) and rental contracts (HTML) saved where the user chooses.
   - Setup keys issued by the database owner (`KurulumAnahtarlari`, stored as SHA-256 hashes).
   - The connection string (server, database, and possibly SQL credentials).
   - Log files under `%LOCALAPPDATA%\AracKiralama\logs`.
   - Database backups made by the operator (`.bak` files).
 - **Trust boundaries:** the Windows user session that runs the application; the network link to SQL Server; the
-  network link to picture hosts; the local file system (settings, logs, backups); the boundary between a signed-in
-  account and the data of other accounts; the boundary between the application's SQL login and the database owner.
+  network link to picture hosts; the local file system (settings, logs, backups, exported files); the boundary
+  between a signed-in account and the data of other accounts; the boundary between the application's SQL login and
+  the database owner.
 
 ## Assumptions
 
@@ -59,6 +62,10 @@ measures only; it is not a legal assessment.
 | Self-promotion to admin | Sign-up always creates the user role; a customer's session cannot change roles; the first admin is created only on an empty database, or with a setup key from the database owner while no admin exists, atomically (two setups at once create one admin, tested on SQL Server) | Mitigated |
 | Losing the last admin | The last admin cannot be demoted, also when two admins demote each other at the same time (tested on SQL Server); admins cannot be deleted | Mitigated |
 | IDOR: ending or listing another account's rental | A customer's rentals are read and ended only with the session's own account id in the statement; another account's rental, a missing one and one already ended get the same answer and leave the same log entries, so rental ids cannot be probed. Admins may end any rental | Mitigated |
+| An old session revived when a change is undone (an admin demoted and promoted again, a password reset) | Every account has a session version (`OturumSurumu`), raised in the same statement as every role change, every password an admin sets and the account's own password change. A session carries the version it was issued with; `AccessGuard` refuses it once the stored version differs, and every write checks the version, the role and the account again inside its statement or transaction (HOLDLOCK on SQL Server). A sign-in verified before such a change cannot be recorded. Tested on SQLite and on SQL Server, also for an admin demoted and promoted again while the write waits for the car's lock | Mitigated |
+| A stolen password used in a second session | "Şifre Değiştir" checks the session first (a session already refused cannot set a password, even with the current one) and raises the session version in the same conditional UPDATE that replaces the password, so every other session of the account ends at once; the window that changed it moves on to the new version (tested on SQLite) | Mitigated |
+| A stale admin form giving back a role another admin just removed | The account list carries each account's session version; a change sends the version its form loaded and the conditional UPDATE matches it, so a form loaded before a demotion or a password reset writes nothing and loads the account again (tested on SQLite, also when the change happens between the service's check and the write). An admin who changes their own role or password is signed out with an explanation | Mitigated |
+| IDOR: another account's contract | A customer's contract is read with the session's own account id in the statement; another account's rental and a missing one get the same answer. The calendar refuses an unlisted car to customers like a missing one | Mitigated |
 
 ## Bookings and locks
 
@@ -69,8 +76,21 @@ measures only; it is not a legal assessment.
 | A rental under way cancelled instead of returned | Whether ending a rental cancels it (before its pick-up day) or returns it (from its pick-up day on) is decided by the database's clock inside the write | Mitigated |
 | A booking at a price the customer did not see | The quote's daily price is compared with the stored price inside the transaction; a changed price refuses the booking. The total is worked out again from the days and the settings | Mitigated |
 | A rental ended twice | Ending updates only an active rental, so two concurrent requests end it once (tested on SQL Server). Rentals are never deleted | Mitigated |
-| A held lock making operations hang | The lock wait is bounded (30 seconds) and shorter than the command timeout (90 seconds); a request that cannot get the car's lock ends with a "busy" message instead of a command timeout | Mitigated |
+| A booking on maintenance days, or maintenance on rented days | Maintenance writes take the same per-car lock as bookings, cancellations, returns and car changes, check the acting admin and the car's active rentals inside the transaction, and a booking checks the car's active maintenance records under the lock. Races of a booking with a maintenance record, a booking that commits while maintenance waits and a cancellation while a booking waits are tested on SQL Server | Mitigated |
+| Two maintenance records on the same days | A record cannot share a day with another active record of the car; a record keeps its own days when changed, and touching or cancelled records do not count | Mitigated |
+| A stale form writing over another admin's change | Every maintenance record and every car has a version, raised by each change; an update or cancellation names the version its form loaded and the conditional UPDATE (under the car's lock) matches no row otherwise. The form tells the admin and loads the record again; any other refusal keeps what the admin typed. Two admins saving one version at once store one change, also for a car whose price changes while the other save waits for the lock (tested on SQL Server). Account changes compare the session version the same way (see above) | Mitigated |
+| Stored times from a wrong workstation clock | Maintenance records are stamped with the database's UTC clock read inside the write, after the car's lock was granted, and their day limits are checked with it; the calendar's states and first month, the report's starting range and creation time and the contract's issue time use it too | Mitigated |
+| A held lock making operations hang, or a deadlock | The lock wait is bounded (30 seconds) and shorter than the command timeout (90 seconds); a request that cannot get the car's lock ends with a "busy" message instead of a command timeout. Every write of a car takes the car's lock before it share-locks the acting account, ending a rental included, so no cycle closes through an account row (tested on SQL Server); a transaction SQL Server still ends as a deadlock victim wrote nothing and gets the same busy message | Mitigated |
 | Totals overflowing | Totals are computed in `decimal` and refused above the largest amount the money column can hold; rental length, horizon and discount are limited by validated settings; check constraints guard prices, mileage, dates and status | Mitigated |
+
+## Exports
+
+| Threat | Mitigation | Status |
+|---|---|---|
+| CSV formula injection through car names, plates or descriptions | Every CSV field is quoted, inner quotes are doubled, and a value starting with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed (also after spaces) gets a leading `'`, so spreadsheets read it as text (tested) | Mitigated |
+| Script injection through a contract | Every value of the contract page is HTML encoded; the page has no script, loads no resource and carries a Content-Security-Policy (`default-src 'none'`, its own style block pinned by hash, `img-src 'none'`, `base-uri 'none'`, `form-action 'none'`) and `no-referrer` (tested) | Mitigated |
+| Data leaking through exported files | A contract shows the rental, the car and the renter's e-mail address and phone, nothing else of the account: no sign-in name (half of the credentials, and a contract is printed and handed out), id, password or session data. The report holds no personal data. Files are written to a temporary file and moved over the target only when complete. Whoever receives a contract receives the renter's contact data; share it as such | Documented |
+| Revenue data seen by customers | The report is admin only and is refused before the database is read | Mitigated |
 
 ## Car pictures
 
@@ -90,7 +110,7 @@ measures only; it is not a legal assessment.
 | Guessing a key | 128-bit keys; every refused key is followed by a fixed 1 second pause; stored keys are compared in constant time. Wrong attempts are not counted, so nobody can revoke the founder's key by guessing | Mitigated |
 | Reusing a key or using it after its 24 hours | A key is used up by a conditional `UPDATE` in the same transaction that writes the admin, and its expiry is decided by the database's clock; a failed write rolls the use back; unused keys are refused once an admin exists | Mitigated |
 | Keys in logs or settings | The key is never logged or stored by the application; `ARAC_SETUP_KEY` only prefills the field and a malformed value is not shown | Mitigated |
-| **Accepted limit:** whoever holds the application login's credentials | That login may read and write the account, car and rental tables (deleting accounts and cars, never rentals), read the setup key hashes and mark keys used. Anyone with the connection string can therefore read all personal data, change rows directly, raise an account's role in the table, or spend an unused key without creating an admin; they cannot create or extend a key. Protect the connection string and grant the login nothing more than `docs/grant-app-login.sql` | Accepted |
+| **Accepted limit:** whoever holds the application login's credentials | That login may read and write the account, car, rental and maintenance tables (deleting accounts and cars, never rentals or maintenance records), read the setup key hashes and mark keys used. Anyone with the connection string can therefore read all personal data, change rows directly, raise an account's role in the table, or spend an unused key without creating an admin; they cannot create or extend a key. Protect the connection string and grant the login nothing more than `docs/grant-app-login.sql` | Accepted |
 
 ## Logging
 
@@ -117,7 +137,7 @@ measures only; it is not a legal assessment.
 | Connection string leaked through the repository | `appsettings.json` is git-ignored; user secrets and the `ARAC_CONNECTION` environment variable are supported; only `appsettings.example.json` is committed, without a real server name or credentials | Mitigated |
 | Interception of the database connection | `TrustServerCertificate=True` in the example is for a local development server only; for any other server use `Encrypt=True` with a certificate the client trusts and leave `TrustServerCertificate` off | Documented |
 | SQL injection | All access goes through EF Core with parameters; the raw statements are constant lock, clock and schema statements built without user input | Mitigated |
-| Excessive rights of the application's login | Use `docs/grant-app-login.sql`: no DDL, no deleted rentals, restricted key table rights. Do the first start and every migration with the owner's connection; prefer Windows authentication | Documented |
+| Excessive rights of the application's login | Use `docs/grant-app-login.sql`: no DDL, no deleted rentals or maintenance records, restricted key table rights; run it again after a migration that adds a table. Do the first start and every migration with the owner's connection; prefer Windows authentication | Documented |
 
 ## KVKK
 
@@ -133,7 +153,10 @@ measures only; it is not a legal assessment.
 - Names, e-mail addresses and phone numbers of original accounts that today's rules refuse are kept as long as
   the admin's form sends them unchanged.
 - The sign-up form tells whether a user name, e-mail address or phone number is taken (accepted above).
-- The booking screen shows every customer the days a car is taken, though not by whom.
+- The booking screen and the calendar show every customer the days from today on that a car is taken or in
+  maintenance, though not by whom or why in detail; days before today are shown as past only.
+- Account changes that touch only the contact data (e-mail, phone, name) do not raise the session version, so two
+  admins editing the same account's contact data at once can still overwrite each other; roles and passwords cannot.
 - On a Windows account shared by several application users, each of them can read when sign-ins, sign-ups and
   bookings happened from the log file, though not by whom.
 

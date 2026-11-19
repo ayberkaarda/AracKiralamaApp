@@ -20,23 +20,29 @@ public interface ICarRepository
 
     /// <summary>Stores a new car and returns its id.</summary>
     /// <exception cref="DuplicatePlateException">Another car has the plate.</exception>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<int> AddAsync(int adminId, Car car, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<int> AddAsync(Actor admin, Car car, CancellationToken cancellationToken = default);
 
-    /// <summary>Changes a car's details under the car's lock.</summary>
+    /// <summary>
+    /// Changes a car's details under the car's lock, only while its stored version is still
+    /// <see cref="Car.Version"/> of <paramref name="car"/> (the version the form loaded); the change raises it.
+    /// </summary>
     /// <exception cref="DuplicatePlateException">Another car has the plate.</exception>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<CarUpdateOutcome> UpdateAsync(int adminId, Car car, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<CarUpdateOutcome> UpdateAsync(Actor admin, Car car, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes a car that has never been rented, under the car's lock.</summary>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<CarDeleteOutcome> DeleteAsync(int adminId, int carId, CancellationToken cancellationToken = default);
+    /// <summary>Deletes a car that has never been rented nor maintained, under the car's lock.</summary>
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<CarDeleteOutcome> DeleteAsync(Actor admin, int carId, CancellationToken cancellationToken = default);
 }
 
 public enum CarUpdateOutcome
 {
     Updated = 0,
     NotFound = 1,
+
+    /// <summary>The car no longer has the version the caller loaded (somebody else changed it); nothing was written.</summary>
+    ChangedElsewhere = 2,
 }
 
 public enum CarDeleteOutcome
@@ -44,7 +50,7 @@ public enum CarDeleteOutcome
     Deleted = 0,
     NotFound = 1,
 
-    /// <summary>The car has rentals, active or past; their history keeps the car.</summary>
+    /// <summary>The car has rentals or maintenance records, current or past; their history keeps the car.</summary>
     HasRentals = 2,
 }
 

@@ -91,7 +91,7 @@ internal sealed class RentalService(
 {
     internal const string CarNotFound = "Araç bulunamadı.";
     internal const string NotAvailable = "Bu araç şu anda kiralamaya kapalı.";
-    internal const string Overlaps = "Araç seçtiğiniz tarihlerin bir kısmında başka bir kiralamada. Lütfen başka tarihler seçin.";
+    internal const string Overlaps = "Araç seçtiğiniz tarihlerin bir kısmında müsait değil. Lütfen başka tarihler seçin.";
     internal const string PriceChanged = "Aracın günlük ücreti değişti. Lütfen güncel ücreti kontrol edip yeniden deneyin.";
     internal const string RentalNotFound = "Kiralama bulunamadı veya zaten sona ermiş.";
     internal const string StartInPast = "Kiralama geçmiş bir tarihte başlayamaz.";
@@ -124,9 +124,11 @@ internal sealed class RentalService(
         // allowed day is today by the database's clock.
         var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
         var current = Quote(quote.CarId, quote.DailyPrice, quote.StartDate, quote.Days, today);
-        var result = await rentals.RentAsync(
-            new RentalRequest(current.CarId, session.UserId, current.StartDate, current.EndDate, current.DailyPrice, current.Total),
-            cancellationToken).ConfigureAwait(false);
+        var result = await access.WriteAsActorAsync(
+            session,
+            () => rentals.RentAsync(
+                new RentalRequest(current.CarId, session.UserId, current.StartDate, current.EndDate, current.DailyPrice, current.Total, session.SessionVersion),
+                cancellationToken)).ConfigureAwait(false);
 
         var auditRole = AuditCodes.Of(role);
         switch (result.Outcome)
@@ -134,7 +136,7 @@ internal sealed class RentalService(
             case RentOutcome.Rented:
                 audit.Record(AuditEvent.RentalCreated, auditRole);
                 return new RentalReceipt(result.RentalId, current.Total, current.StartDate, current.EndDate);
-            case RentOutcome.Overlaps:
+            case RentOutcome.Overlaps or RentOutcome.InMaintenance:
                 audit.Record(AuditEvent.RentalOverlapRefused, auditRole);
                 throw new BusinessRuleException(Overlaps);
             case RentOutcome.NotAvailable:
@@ -179,7 +181,7 @@ internal sealed class RentalService(
         // The owner filter comes from the role stored now: a demoted admin ends only their own rentals.
         // The repository checks the role again inside the write.
         var owner = await access.OwnerFilterAsync(session, cancellationToken).ConfigureAwait(false);
-        var actor = new RentalActor(session.UserId, AsAdmin: owner is null);
+        var actor = new RentalActor(session.UserId, AsAdmin: owner is null, session.SessionVersion);
         var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
         var result = await access.WriteAsActorAsync(session, () => rentals.EndAsync(rentalId, actor, today, cancellationToken)).ConfigureAwait(false);
         if (result.Outcome == EndRentalOutcome.NotFound)

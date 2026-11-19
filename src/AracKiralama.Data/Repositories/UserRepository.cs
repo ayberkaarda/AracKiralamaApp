@@ -17,7 +17,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.UserName == userName)
-            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd))
+            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -28,18 +28,18 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd))
+            .Select(u => new AccountCredentials(u.Id, u.UserName, u.Role, u.PasswordHash, u.PasswordFormat, u.FailedLoginCount, u.LockoutEnd, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public async Task<UserRole?> GetRoleAsync(int userId, CancellationToken cancellationToken = default)
+    public async Task<SessionState?> GetSessionStateAsync(int userId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         return await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => (UserRole?)u.Role)
+            .Select(u => new SessionState(u.Role, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -50,7 +50,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role))
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.SessionVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -61,7 +61,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .OrderBy(u => u.Id)
-            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role))
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.SessionVersion))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -97,7 +97,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return taken;
     }
 
-    public async Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default)
+    public async Task<int> AddAsync(User user, Actor? admin, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
 
@@ -105,12 +105,12 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         {
             await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            if (adminId is { } admin)
+            if (admin is { } actor)
             {
                 // Under the lock every role change takes, so an admin demoted concurrently has lost the
                 // role here already and cannot add another admin.
                 await Locks.AdminRolesAsync(db, cancellationToken).ConfigureAwait(false);
-                await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
+                await Actors.RequireAsync(db, actor, admin: true, cancellationToken).ConfigureAwait(false);
             }
 
             var entity = new User
@@ -136,7 +136,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         }
     }
 
-    public async Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default)
+    public async Task<AccountUpdateOutcome> UpdateAsync(Actor admin, AccountUpdate update, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
 
@@ -148,23 +148,33 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
 
             // Decided under the lock that every role change takes: an admin demoted concurrently has lost
             // the role here already, so it can neither change accounts nor give the role to anyone.
-            await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+            await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
 
             var id = update.UserId;
-            var keepsAdmin = update.Role == UserRole.Admin;
+            var expectedVersion = update.ExpectedVersion;
+            var role = update.Role;
+            var keepsAdmin = role == UserRole.Admin;
             var hash = update.NewPasswordHash;
+            var newPassword = hash is not null;
 
-            // The WHERE clause is the final decision: an admin keeps the role, or another admin exists.
-            // The admin role lock above keeps a concurrent demotion from passing the same check.
+            // The WHERE clause is the final decision: the account still has the session version the form
+            // loaded (no role or password change since, so a stale form cannot give back a role another
+            // admin just removed), and an admin keeps the role or another admin exists. The admin role
+            // lock above keeps a concurrent demotion from passing the same check.
             var updated = await db.Users
-                .Where(u => u.Id == id && (keepsAdmin || u.Role != UserRole.Admin || db.Users.Any(o => o.Id != id && o.Role == UserRole.Admin)))
+                .Where(u => u.Id == id
+                    && u.SessionVersion == expectedVersion
+                    && (keepsAdmin || u.Role != UserRole.Admin || db.Users.Any(o => o.Id != id && o.Role == UserRole.Admin)))
                 .ExecuteUpdateAsync(
                     s =>
                     {
-                        s.SetProperty(u => u.UserName, update.UserName)
+                        // A new role or password ends every open session of the account for good: the
+                        // version is read before the SET, so it rises exactly when the stored role differs.
+                        s.SetProperty(u => u.SessionVersion, u => newPassword || u.Role != role ? u.SessionVersion + 1 : u.SessionVersion)
+                            .SetProperty(u => u.UserName, update.UserName)
                             .SetProperty(u => u.Email, update.Email)
                             .SetProperty(u => u.Phone, update.Phone)
-                            .SetProperty(u => u.Role, update.Role);
+                            .SetProperty(u => u.Role, role);
                         if (hash is not null)
                         {
                             // A password set by an admin also lifts a lock.
@@ -183,8 +193,17 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
                 return AccountUpdateOutcome.Updated;
             }
 
-            var exists = await db.Users.AnyAsync(u => u.Id == id, cancellationToken).ConfigureAwait(false);
-            return exists ? AccountUpdateOutcome.LastAdmin : AccountUpdateOutcome.NotFound;
+            var version = await db.Users
+                .Where(u => u.Id == id)
+                .Select(u => (int?)u.SessionVersion)
+                .SingleOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return version switch
+            {
+                null => AccountUpdateOutcome.NotFound,
+                _ when version != expectedVersion => AccountUpdateOutcome.ChangedElsewhere,
+                _ => AccountUpdateOutcome.LastAdmin,
+            };
         }
         catch (DbUpdateException ex)
         {
@@ -199,11 +218,11 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         }
     }
 
-    public async Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default)
+    public async Task<AccountDeleteOutcome> DeleteAsync(Actor admin, int userId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
 
         // One statement decides: no admin, no rental history.
         var deleted = await db.Users
@@ -229,7 +248,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         };
     }
 
-    public async Task<bool> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default)
+    public async Task<int?> ChangePasswordAsync(AccountCredentials verified, int sessionVersion, string newPasswordHash, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(verified);
         ArgumentException.ThrowIfNullOrEmpty(newPasswordHash);
@@ -238,16 +257,21 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         var id = verified.Id;
         var verifiedHash = verified.PasswordHash;
         var verifiedFormat = verified.PasswordFormat;
+
+        // The WHERE clause is the final decision: the password is still the verified one and the changing
+        // session is still current (no role change or other password change since). The new version ends
+        // every other session of the account in the same statement.
         var updated = await db.Users
-            .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat)
+            .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat && u.SessionVersion == sessionVersion)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.PasswordHash, newPasswordHash)
                     .SetProperty(u => u.PasswordFormat, PasswordFormat.Pbkdf2)
-                    .SetProperty(u => u.FailedLoginCount, 0),
+                    .SetProperty(u => u.FailedLoginCount, 0)
+                    .SetProperty(u => u.SessionVersion, u => u.SessionVersion + 1),
                 cancellationToken)
             .ConfigureAwait(false);
-        return updated == 1;
+        return updated == 1 ? sessionVersion + 1 : null;
     }
 
     public async Task<bool> AnyAdminAsync(CancellationToken cancellationToken = default)
@@ -360,11 +384,12 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
 
-        // The WHERE clause is the final decision: a lock set by a concurrent failure, or a password
-        // changed since it was verified, makes the statement match no row and the sign-in fails.
+        // The WHERE clause is the final decision: a lock set by a concurrent failure, a password changed
+        // or a role change since it was verified makes the statement match no row and the sign-in fails.
         var id = verified.Id;
         var verifiedHash = verified.PasswordHash;
         var verifiedFormat = verified.PasswordFormat;
+        var verifiedVersion = verified.SessionVersion;
         var hash = newPasswordHash ?? verifiedHash;
         var format = newPasswordHash is null ? verifiedFormat : PasswordFormat.Pbkdf2;
 
@@ -372,7 +397,8 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
             .Where(u => u.Id == id
                 && (u.LockoutEnd == null || u.LockoutEnd <= now)
                 && u.PasswordHash == verifiedHash
-                && u.PasswordFormat == verifiedFormat)
+                && u.PasswordFormat == verifiedFormat
+                && u.SessionVersion == verifiedVersion)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.FailedLoginCount, 0)

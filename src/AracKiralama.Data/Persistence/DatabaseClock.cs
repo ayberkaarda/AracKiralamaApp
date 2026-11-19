@@ -12,6 +12,15 @@ internal sealed class DatabaseClock(IDbContextFactory<AracDbContext> contextFact
     public async Task<DateTime> GetUtcNowAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The clock read on <paramref name="db"/>'s own connection, so a write can stamp its rows with the
+    /// time inside its transaction, after it got its locks.
+    /// </summary>
+    internal static async Task<DateTime> ReadAsync(AracDbContext db, TimeProvider timeProvider, CancellationToken cancellationToken)
+    {
         if (!db.Database.IsSqlServer())
         {
             return timeProvider.GetUtcNow().UtcDateTime;

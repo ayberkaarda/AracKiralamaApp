@@ -1,14 +1,27 @@
 namespace AracKiralama.Domain.Repositories;
 
 /// <summary>
-/// The account a rental operation acts for: with <see cref="AsAdmin"/> every account's rentals, otherwise
-/// only its own. The repository checks it against the stored account inside the operation.
+/// The account a write acts for, with the session version its session was issued with. The repository
+/// checks both against the stored account inside the write's transaction: an account that was deleted,
+/// or whose role or password was changed since the session began (also when the change was undone
+/// again), writes nothing.
 /// </summary>
-public readonly record struct RentalActor(int UserId, bool AsAdmin);
+public readonly record struct Actor(int UserId, int SessionVersion);
 
 /// <summary>
-/// Raised by a repository when the account an operation acts for no longer exists, or no longer has
-/// the role the operation needs, at the moment of the write. Nothing was written.
+/// The account a rental operation acts for: with <see cref="AsAdmin"/> every account's rentals, otherwise
+/// only its own. The repository checks it, with <see cref="SessionVersion"/>, against the stored account
+/// inside the operation.
+/// </summary>
+public readonly record struct RentalActor(int UserId, bool AsAdmin, int SessionVersion)
+{
+    public Actor Actor => new(UserId, SessionVersion);
+}
+
+/// <summary>
+/// Raised by a repository when the account an operation acts for no longer exists, no longer has the
+/// role the operation needs, or had its session version raised, at the moment of the write. Nothing was
+/// written.
 /// </summary>
 public sealed class ActorRevokedException : Exception
 {

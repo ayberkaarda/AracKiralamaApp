@@ -169,9 +169,9 @@ public sealed class SqliteBoundaryTests : IAsyncLifetime
         }
 
         var accounts = _db.Get<IAccountService>();
-        await accounts.UpdateAsync(_admin, id, new AccountInput(" Ali Veli ", "Yeni.Sifre12", "eski adres ", " 212555", UserRole.User), Ct);
+        await accounts.UpdateAsync(_admin, id, await AccountVersionAsync(_db.Services, id), new AccountInput(" Ali Veli ", "Yeni.Sifre12", "eski adres ", " 212555", UserRole.User), Ct);
         var refused = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => accounts.UpdateAsync(_admin, id, new AccountInput("Ali Veli", "Baska.Sifre12", "yeni adres", "212555", UserRole.User), Ct));
+            async () => await accounts.UpdateAsync(_admin, id, await AccountVersionAsync(_db.Services, id), new AccountInput("Ali Veli", "Baska.Sifre12", "yeni adres", "212555", UserRole.User), Ct));
 
         Assert.Equal("Lütfen geçerli bir e-posta adresi girin.", refused.Message);
         var stored = (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == id);

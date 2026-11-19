@@ -38,6 +38,13 @@ public sealed class Car
     /// days is decided by its rentals, not by this flag.
     /// </summary>
     public bool IsListed { get; set; } = true;
+
+    /// <summary>
+    /// Raised by every change of the car's details (column Surum, 1 for a new car). A change names the
+    /// version its form loaded and is refused when the stored one differs, so a form opened before another
+    /// admin's change (a new price, the car taken off the list) cannot write the old values back.
+    /// </summary>
+    public int Version { get; set; }
 }
 
 /// <summary>Distinct values the car lists can be filtered by.</summary>

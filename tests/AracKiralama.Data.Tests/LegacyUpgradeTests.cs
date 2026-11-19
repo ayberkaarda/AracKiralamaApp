@@ -80,6 +80,10 @@ public sealed class LegacyUpgradeTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>Every migration of the application; an upgraded database has applied each of them once.</summary>
+    private static int MigrationCount { get; } = typeof(AracDbContext).Assembly.GetTypes()
+        .Count(t => t.IsDefined(typeof(Microsoft.EntityFrameworkCore.Migrations.MigrationAttribute), inherit: false));
+
     [Fact]
     public async Task Initialize_LegacyDatabase_KeepsTheRowsAndTurnsThemIntoTheNewModel()
     {
@@ -141,7 +145,7 @@ public sealed class LegacyUpgradeTests
         // The customer sees the old rental and returns it; the admin can reset a legacy account's password.
         var mine = Assert.Single(await rentals.GetMyActiveRentalsAsync(user, Ct));
         Assert.Equal(RentalEnding.Returned, await rentals.EndAsync(user, mine.Id, Ct));
-        await provider.GetRequiredService<IAccountService>().UpdateAsync(admin, 6, new AccountInput("eski", "Yeni.Sifre12", null, null, UserRole.User), Ct);
+        await provider.GetRequiredService<IAccountService>().UpdateAsync(admin, 6, await AccountVersionAsync(provider, 6), new AccountInput("eski", "Yeni.Sifre12", null, null, UserRole.User), Ct);
         await auth.SignInAsync("eski", "Yeni.Sifre12", Ct);
 
         // Listed cars only; new rows continue after the existing identities.
@@ -207,7 +211,7 @@ public sealed class LegacyUpgradeTests
             Task.Run(() => a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct),
             Task.Run(() => b.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct));
 
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
+        Assert.Equal(MigrationCount, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
         Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Araclar WHERE KiralamayaAcik = 0", Ct));
     }

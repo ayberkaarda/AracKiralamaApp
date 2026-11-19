@@ -47,12 +47,42 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ **Araçlar** ("Yönetim Paneli"): marka, model, yıl, vites tipi, yakıt tipi, kilometre, renk, plaka, günlük ücret
   ve resim linkiyle ("Resim Linki") araç ekleme ("Araç Ekle"), güncelleme ("Aracı Güncelle") ve silme ("Aracı Sil").
   Her geçersiz alan kendi kontrolünün yanında işaretlenir. Plakalar benzersizdir. Kiralama geçmişi olan araç
-  silinemez; bunun yerine "Kiralamaya açık" seçeneği aracı müşterilerden gizler.
+  silinemez; bunun yerine "Kiralamaya açık" seçeneği aracı müşterilerden gizler. Başka bir yöneticinin
+  değişikliğinden (yeni ücret, kiralamaya kapatma) önce açılmış bir formdan yapılan değişiklik reddedilir ve araç
+  yeniden yüklenir.
 - ✅ **Hesaplar** ("Kullanıcı Yönetim Paneli"): rol, e-posta ve telefonla (listede maskeli) hesap ekleme,
   güncelleme ve silme; yeni şifre eskisinin yerine geçer ve kilidi kaldırır. Yöneticiler ve kiralaması olan hesaplar
-  silinemez, son yönetici yönetici rolünü korur.
+  silinemez, son yönetici yönetici rolünü korur. Hesabın rolü veya şifresi başka bir yerde değişmeden önce açılmış bir
+  formdan yapılan değişiklik reddedilir ve hesap yeniden yüklenir; böylece eski bir form, başka bir yöneticinin az önce
+  aldığı rolü geri veremez. Kendi rolünü veya şifresini değiştiren yöneticinin oturumu kapatılır.
 - ✅ **Kiralamalar** ("Kiralanan Araçlar"): tüm aktif kiralamalar; marka, vites tipi ve yakıt tipine göre
   filtrelenebilir.
+
+### Takvim, bakım, raporlar ve sözleşmeler
+
+- ✅ **Müsaitlik takvimi** ("Müsaitlik Takvimi"): bir aracın bir ayı; her gün veritabanının bugününe göre "Boş",
+  "Dolu", "Bakım" (bakım veya hasar onarımı) ya da "Geçmiş" olarak işaretlenir; ilk gösterilen ay da bu bugüne göre
+  seçilir. Müşteriler kiralamaya açık araçlar için kiralama ekranından açar ve bugünden önceki her günü "Geçmiş"
+  görür; yöneticiler her araç için yönetim panelinden açar ve kiralama ile bakımın geçmiş günlerini de görür. Durum
+  her hücrede yazılıdır; renkler yalnızca yardımcıdır, yüksek karşıtlıkta sistem renkleri korunur. Ay düğmelerine hızlı
+  tıklamalar toplanır; en son istenen ay gösterilir.
+- ✅ **Bakım ve hasar kayıtları** ("Bakım / Hasar Kayıtları", yönetici): planlı bakım veya hasar onarımı; günleri,
+  açıklaması ve isteğe bağlı maliyetiyle. Araç bu günlerde kiralanamaz ve bir kayıt aktif bir kiralamanın veya aracın
+  başka bir aktif kaydının günlerini alamaz. Yanlış girilen kayıt silinmez, iptal edilir. Başka bir yöneticinin
+  değişikliğinden önce açılmış bir formun kaydı reddedilir ve kayıt yeniden yüklenir; başka her retten sonra
+  yöneticinin yazdıkları formda kalır. Zamanlar, yazma anında veritabanının saatiyle damgalanır.
+- ✅ **Gelir raporu** ("Gelir Raporu", yönetici): iki gün arasındaki kiralamalar aylara veya günlere ve araçlara
+  göre; bugüne kadar teslim alınmış her kiralama (iade edilmiş veya sürmekte olan), rezervasyonda belirlenen ücretiyle
+  alış gününün dönemine yazılır; ekran bu aydan veritabanının bugününe kadarki aralıkla açılır. Henüz başlamamış
+  kiralamalar hâlâ ücretsiz iptal edilebildiği için sayılmaz, böylece geçmiş bir rapor sonradan değişmez; iptal edilen
+  kiralamalar gelir getirmez. Aralığın yalnızca bir kısmını kapsayan ay kendi günleriyle adlandırılır ve gün sayısı
+  rezervasyondaki gündür. Ekran ve CSV bunu bir notla belirtir. "CSV Olarak Kaydet" ekrandaki raporu ";" ayraçlı
+  UTF-8 CSV olarak kaydeder; her alan tırnak içindedir ve `=`, `+`, `-`, `@` ya da bir kontrol karakteriyle başlayan
+  değer formül olarak değil metin olarak yazılır.
+- ✅ **Kiralama sözleşmesi** (her kiralama kartında "Sözleşme"): kiralamayı, aracı ve kiracının e-posta adresini ve
+  telefonunu gösteren yazdırılabilir bir HTML sayfası. Her değer HTML olarak kodlanır; sayfa betik çalıştırmaz, hiçbir
+  şey yüklemez ve Content-Security-Policy ile yalnızca kendi stil bloğuna izin verir; kullanıcı adı, hesap numarası,
+  şifre veya oturum bilgisi içermez. Müşteriler yalnızca kendi sözleşmelerini, yöneticiler hepsini alır.
 
 ### Güvenlik
 
@@ -63,6 +93,16 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ Her çağrı oturum açmış hesaba göre denetlenir ve her yetkili işlem hesabın rolünü veritabanından yeniden okur:
   silinen ya da yetkisi alınan bir yöneticinin açık oturumu yetkilerini hemen kaybeder. Müşteriler yalnızca kendi
   kiralamalarına ulaşır; başka bir hesabın kiralaması, var olmayan bir kiralamayla aynı cevabı alır.
+- ✅ Her hesabın bir oturum sürümü vardır; her rol değişikliği, yöneticinin belirlediği her şifre ve hesabın kendi
+  şifre değişikliği bu sürümü artırır. Değişiklikten önceki oturum, değişiklik geri alınsa bile kalıcı olarak
+  reddedilir (yetkisi alınıp yeniden verilen yönetici yeniden giriş yapar). Kendi şifre değişikliği dahil her yazma
+  işlemi sürümü, rolü ve hesabı kendi komutu veya transaction'ı içinde denetler. "Şifre Değiştir", hesabın diğer
+  oturumlarını (örneğin çalınan şifreyle başka bir yerde açılmış olanı) kapatır; şifreyi değiştiren pencere çalışmaya
+  devam eder.
+- ✅ Bir aracın kiralama, iptal, iade, araç değişikliği ve bakım yazmaları aracın kilidini bekler (en fazla 30 saniye,
+  her zaman komut zaman aşımından kısa) ve kilidi, işlemi yapan hesabı denetlemeden önce, hepsi aynı sırayla alır;
+  meşgul bir kilit de, SQL Server'ın kilitlenme (deadlock) kurbanı seçtiği bir transaction da hiçbir şey yazmadan
+  "İşlem meşgul ... tekrar deneyin" ile biter.
 - ✅ Türkçe mesajlı merkezi FluentValidation doğrulayıcıları (boş alanlar, e-posta biçimi, şifre kuralı, araç
   alanları, kiralama günleri ve tarihleri); yazma düğmeleri bir işlem sürerken tekrarlanan tıklamaları yok sayar.
 - ✅ Kişisel veri içermeyen, anonim denetim kodlu günlük log dosyaları.
@@ -90,6 +130,10 @@ artık var olmayan eski uygulama ekranlarını gösteriyordu ve kaldırıldı.
 | Araç ekleme, güncelleme, silme | ❌ | ✅ |
 | Hesap ekleme, güncelleme, silme, rol atama | ❌ | ✅ (yönetici silinmez, son yönetici yönetici kalır) |
 | İlk yöneticiyi oluşturma | ❌ (boş veritabanında veya yalnızca sahibin kurulum anahtarıyla) | - |
+| Aracın müsaitlik takvimini görme | ✅ kiralamaya açık araçlar | ✅ her araç |
+| Bakım ve hasar kaydı ekleme, değiştirme, iptal etme | ❌ | ✅ |
+| Gelir raporu ve CSV dosyası | ❌ | ✅ |
+| Kiralama sözleşmesini kaydetme | ✅ kendi kiralamaları | ✅ her kiralama |
 
 ---
 
@@ -239,6 +283,11 @@ dotnet ef migrations add <Ad> --project src/AracKiralama.Data --output-dir Persi
 Tasarım zamanı fabrikası `ARAC_CONNECTION` değişkenini okur, yoksa yerel SQL Server Express örneğini kullanır.
 Migration'ları veritabanı sahibinin bağlantısıyla uygulayın; uygulamanın kısıtlı oturumunun DDL yetkisi yoktur.
 
+İlk migration'dan sonrakiler `AddSessionVersion` (hesapların oturum sürümü, `OturumSurumu`), `AddMaintenanceLog`
+(bakım ve hasar kayıtlarının `AracBakim` tablosu) ve `AddCarVersion`'dır (araçların sürümü, `Surum`; eski bir formdan
+gelen değişikliği reddeder). Bunları uyguladıktan sonra uygulamanın oturumunun yeni tabloyu kullanabilmesi için
+`docs/grant-app-login.sql` betiğini yeniden çalıştırın; yeni sütunlar mevcut tablo yetkileriyle kapsanır.
+
 **Eski uygulamanın veritabanını yükseltme:** `dotnet ef database update` bu veritabanını **yükseltmez**. Böyle bir
 veritabanında `Kullanicilar`, `Araclar` ve `Kiralama` tabloları vardır ama migration geçmişi yoktur; EF Core tabloları
 yeniden oluşturmaya çalışır. Bunun yerine uygulamayı başlatın: açılışta `DatabaseInitializer` önce eski veritabanı
@@ -275,9 +324,9 @@ vardır.
   onaltılık karakterlik bir anahtar üretir, `KurulumAnahtarlari` tablosunda yalnızca SHA-256 özetini saklar ve
   anahtarı bir kez gösterir. Veritabanında zaten bir yönetici varsa anahtar üretmeyi reddeder.
 - `docs/grant-app-login.sql` uygulamanın kendi oturumuna örnek yetkiler verir: anahtar tablosunda yalnızca okuma ve
-  anahtarı kullanılmış olarak işaretleme; anahtar ekleyemez, silemez veya değiştiremez. Kiralamalar hiçbir zaman
-  silinmez. İlk açılışı (şemanın oluşturulması veya yükseltilmesi) veritabanı sahibinin bağlantısıyla yapın, ardından
-  uygulamanın bağlantı dizesini bu oturuma yönlendirin.
+  anahtarı kullanılmış olarak işaretleme; anahtar ekleyemez, silemez veya değiştiremez. Kiralamalar ve bakım
+  kayıtları hiçbir zaman silinmez. İlk açılışı (şemanın oluşturulması veya yükseltilmesi) veritabanı sahibinin
+  bağlantısıyla yapın, ardından uygulamanın bağlantı dizesini bu oturuma yönlendirin.
 - Anahtarı forma yazın (tireler, boşluklar ve büyük/küçük harf önemsizdir) ya da yalnızca alanı dolduran
   `ARAC_SETUP_KEY` ortam değişkeniyle verin. Anahtar 24 saat geçerlidir ve bir kez çalışır: yönetici hesabını
   oluşturan yazmayla birlikte kullanılmış olarak işaretlenir. Süresinin dolup dolmadığına veritabanının saati karar
@@ -336,9 +385,9 @@ dotnet test -c Release
 
 | Proje | Tür | Kapsam |
 |---|---|---|
-| `tests/AracKiralama.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası (kullanıcı adı 3/32, şifre 8/64, e-posta, telefon, araç alanları, plakalar, kiralama günleri ve tarihleri), korunan eski değerler, denetim kodları, PBKDF2 ve biçim yükseltmesi, kilit, kiralama ve fiyat kuralları, katı Moq taklitleriyle sahiplik ve yönetici denetimleri |
-| `tests/AracKiralama.Data.Tests` | Entegrasyon | Bellek içi SQLite üzerinde servisler ve repository'ler (çakışma sınırları, en kısa ve en uzun kiralama, kiralama ufku, güne göre iptal veya iade, IDOR cevapları, kilit süresi, yetkisi alınan oturumlar, reddedilen girdinin hiçbir şey yazmaması); SQL Server üzerinde kiralama ve kilit yarışları, kısıtlı oturumla kurulum anahtarları ve eski veritabanı yükseltmesi |
-| `tests/AracKiralama.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, resim adresi denetimleri, kilit sonrası odak, yazma korumaları, son isteğin kazandığı yükleme, nötr marka |
+| `tests/AracKiralama.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası (kullanıcı adı 3/32, şifre 8/64, e-posta, telefon, araç alanları, plakalar, kiralama günleri ve tarihleri), korunan eski değerler, denetim kodları, PBKDF2 ve biçim yükseltmesi, kilit, kiralama ve fiyat kuralları, katı Moq taklitleriyle sahiplik ve yönetici denetimleri, oturum sürümleri, bakım girdisi, takvim durumları, gelir toplamları ve sınırları, formüle karşı güvenli CSV, sözleşmenin kodlanması ve CSP |
+| `tests/AracKiralama.Data.Tests` | Entegrasyon | Bellek içi SQLite üzerinde servisler ve repository'ler (çakışma sınırları, en kısa ve en uzun kiralama, kiralama ufku, güne göre iptal veya iade, IDOR cevapları, kilit süresi, yetkisi alınan oturumlar, reddedilen girdinin hiçbir şey yazmaması, bakımın kapattığı günler ve eski sürümler, takvim, gelir ve sözleşme sahiplik denetimleri, rol veya şifre değişikliğiyle biten oturumlar); SQL Server üzerinde kiralama, kilit, bakım ve eski form yarışları, kısa komut zaman aşımında meşgul araç kilidi, kısıtlı oturumla kurulum anahtarları ve tüm yeni özellikler ve eski veritabanı yükseltmesi |
+| `tests/AracKiralama.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, resim adresi denetimleri, kilit sonrası odak, yazma korumaları, takvim ayları ve raporlarda son isteğin kazandığı yükleme, tek bakım ve sözleşme kaydı, eski kayıtta yeniden yükleme, yazı tipine göre boyutlanan takvim hücreleri, nötr marka |
 
 SQL Server testleri `ARAC_TEST_SQLSERVER` içindeki sunucuda geçici veritabanları kullanır (varsayılan: Windows
 kimlik doğrulamalı yerel SQL Express). `ARAC_SKIP_SQL_TESTS=1` tanımlıysa veya sunucuya ulaşılamıyorsa atlanır;

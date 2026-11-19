@@ -110,6 +110,22 @@ public static partial class InputRules
             : null;
     }
 
+    /// <summary>Longest maintenance or damage description (column size).</summary>
+    public const int MaintenanceDescriptionMaxLength = 500;
+
+    /// <summary>
+    /// A maintenance description of at most <see cref="MaintenanceDescriptionMaxLength"/> characters
+    /// after trimming, with no control characters other than line breaks and tabs. It is shown as plain
+    /// text only.
+    /// </summary>
+    public static bool IsValidMaintenanceDescription(string? value)
+    {
+        var text = value?.Trim();
+        return !string.IsNullOrEmpty(text)
+            && text.Length <= MaintenanceDescriptionMaxLength
+            && text.All(c => !char.IsControl(c) || c is '\r' or '\n' or '\t');
+    }
+
     /// <summary>An absolute http or https address, as the car pictures are loaded from the web.</summary>
     public static bool IsValidImageUrl([NotNullWhen(true)] string? value) =>
         !string.IsNullOrEmpty(value)

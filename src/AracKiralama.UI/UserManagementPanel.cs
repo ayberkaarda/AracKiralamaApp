@@ -1,4 +1,5 @@
 using System.Globalization;
+using AracKiralama.Business;
 using AracKiralama.Business.Security;
 using AracKiralama.Business.Services;
 using AracKiralama.Business.Validation;
@@ -54,7 +55,10 @@ namespace AracKiralama.UI
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         internal IUserPrompts Prompts { get; set; }
 
-        internal int? SelectedUserId { get; private set; }
+        internal int? SelectedUserId => Selected?.Id;
+
+        /// <summary>The account in the form as it was loaded, with its version, or <see langword="null"/> for a new one.</summary>
+        internal UserSummary? Selected { get; private set; }
 
         internal IReadOnlyList<UserSummary> ShownUsers { get; private set; } = [];
 
@@ -76,7 +80,7 @@ namespace AracKiralama.UI
         {
             ArgumentNullException.ThrowIfNull(user);
 
-            SelectedUserId = user.Id;
+            Selected = user;
             txtId.Text = user.Id.ToString(CultureInfo.InvariantCulture);
             txtUserName.Text = user.UserName;
             txtPassword.Clear();
@@ -100,7 +104,7 @@ namespace AracKiralama.UI
 
         internal Task<bool> UpdateAsync()
         {
-            if (SelectedUserId is not { } id)
+            if (Selected is not { } loaded)
             {
                 Prompts.Warn("Lütfen güncellemek için bir kullanıcı seçin.");
                 return Task.FromResult(false);
@@ -108,12 +112,52 @@ namespace AracKiralama.UI
 
             return WriteAsync(async () =>
             {
-                await _accounts.UpdateAsync(_session, id, ReadInput());
+                bool ownSessionEnded;
+                try
+                {
+                    ownSessionEnded = await _accounts.UpdateAsync(_session, loaded.Id, loaded.Version, ReadInput());
+                }
+                catch (BusinessRuleException ex) when (ex.IsStale)
+                {
+                    // Changed or deleted meanwhile: the account is loaded again as it is now.
+                    await LoadUsersAsync();
+                    if (ShownUsers.FirstOrDefault(u => u.Id == loaded.Id) is { } current)
+                    {
+                        SelectUser(current);
+                    }
+                    else
+                    {
+                        ClearForm();
+                    }
+
+                    throw;
+                }
+
+                if (ownSessionEnded)
+                {
+                    // The admin's own role or password changed: this session has ended for good, so the
+                    // panel signs out instead of answering every later click with a refusal.
+                    SessionEnded = true;
+                    ClearForm();
+                    Prompts.Inform(OwnSessionEndedMessage);
+                    Close();
+                    return;
+                }
+
                 Prompts.Inform("Kullanıcı başarıyla güncellendi.");
                 ClearForm();
                 await LoadUsersAsync();
             });
         }
+
+        internal const string OwnSessionEndedMessage =
+            "Kendi rolünüzü veya şifrenizi değiştirdiniz. Güvenliğiniz için oturumunuz kapatıldı; lütfen yeniden giriş yapın.";
+
+        /// <summary>
+        /// Whether the admin changed their own role or password here, which ended their session: the admin
+        /// panel then signs out to the sign-in screen.
+        /// </summary>
+        internal bool SessionEnded { get; private set; }
 
         internal Task<bool> DeleteAsync()
         {
@@ -170,7 +214,7 @@ namespace AracKiralama.UI
 
         private void ClearForm()
         {
-            SelectedUserId = null;
+            Selected = null;
             _shownPhone = null;
             dataGridView1.ClearSelection();
             txtId.Clear();

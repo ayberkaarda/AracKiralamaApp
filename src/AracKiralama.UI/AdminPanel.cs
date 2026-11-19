@@ -56,7 +56,38 @@ namespace AracKiralama.UI
             txtDailyPrice.AcceptMoneyOnly();
             dataGridView1.UseReadOnlyList();
             btnUpdateCar.Enabled = false;
+
+            // The car operations below the picture: the calendar and the maintenance log of the car in the
+            // form, and the revenue report. They size themselves from the font.
+            btnCalendar = new Button { Name = "btnCalendar", Text = "Müsaitlik Takvimi", AutoSize = true, Enabled = false };
+            btnMaintenance = new Button { Name = "btnMaintenance", Text = "Bakım / Hasar Kayıtları", AutoSize = true, Enabled = false };
+            btnRevenue = new Button { Name = "btnRevenue", Text = "Gelir Raporu", AutoSize = true };
+            btnCalendar.Click += (_, _) => OpenForSelectedCar<AvailabilityCalendarForm>();
+            btnMaintenance.Click += (_, _) => OpenForSelectedCar<MaintenanceForm>();
+            btnRevenue.Click += (_, _) =>
+            {
+                using var report = _forms.Create<RevenueReportForm>(_session);
+                report.ShowDialog(this);
+            };
+            var operations = new FlowLayoutPanel
+            {
+                Name = "pnlOperations",
+                Location = new Point(picCar.Left, picCar.Bottom + 8),
+                Size = new Size(picCar.Width, btnUpdateCar.Top - picCar.Bottom - 16),
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = true,
+                AutoScroll = true,
+            };
+            operations.Controls.AddRange([btnCalendar, btnMaintenance, btnRevenue]);
+            Controls.Add(operations);
+
+            // Both need the car in the form, exactly like "Aracı Güncelle".
+            btnUpdateCar.EnabledChanged += (_, _) => btnCalendar.Enabled = btnMaintenance.Enabled = btnUpdateCar.Enabled;
         }
+
+        private readonly Button btnCalendar;
+        private readonly Button btnMaintenance;
+        private readonly Button btnRevenue;
 
         public bool SignedOut { get; private set; }
 
@@ -66,6 +97,9 @@ namespace AracKiralama.UI
 
         /// <summary>The car whose details are in the form, or <see langword="null"/> when a new one is entered.</summary>
         internal int? SelectedCarId { get; private set; }
+
+        /// <summary>The version of the car in the form as it was loaded; a change sends it back.</summary>
+        internal int SelectedCarVersion { get; private set; }
 
         internal IReadOnlyList<Car> ShownCars { get; private set; } = [];
 
@@ -101,6 +135,7 @@ namespace AracKiralama.UI
 
             errorProvider1.Clear();
             SelectedCarId = car.Id;
+            SelectedCarVersion = car.Version;
             txtId.Text = car.Id.ToString(CultureInfo.InvariantCulture);
             txtBrand.Text = car.Brand;
             txtModel.Text = car.Model;
@@ -148,15 +183,26 @@ namespace AracKiralama.UI
                 return;
             }
 
+            var version = SelectedCarVersion;
             await WriteAsync(async () =>
             {
                 try
                 {
-                    await _cars.UpdateAsync(_session, id, ReadInput());
+                    await _cars.UpdateAsync(_session, id, version, ReadInput());
                 }
-                catch (BusinessRuleException ex) when (ex.FieldErrors.Count == 0)
+                catch (BusinessRuleException ex) when (ex.IsStale)
                 {
-                    await ReloadAfterRefusalAsync(id);
+                    // Changed or deleted elsewhere: the form shows the car as it is now.
+                    await LoadCarsAsync();
+                    if (ShownCars.FirstOrDefault(c => c.Id == id) is { } current)
+                    {
+                        SelectCar(current);
+                    }
+                    else
+                    {
+                        ClearForm();
+                    }
+
                     throw;
                 }
 
@@ -311,6 +357,7 @@ namespace AracKiralama.UI
         private void ClearForm()
         {
             SelectedCarId = null;
+            SelectedCarVersion = 0;
             dataGridView1.ClearSelection();
             errorProvider1.Clear();
             foreach (var box in new[] { txtId, txtBrand, txtModel, txtMileage, txtColor, txtPlate, txtDailyPrice, txtStatus, txtImageUrl })
@@ -331,8 +378,38 @@ namespace AracKiralama.UI
 
         private void btnUsers_Click(object? sender, EventArgs e)
         {
-            using var panel = _forms.Create<UserManagementPanel>(_session);
-            panel.ShowDialog(this);
+            bool sessionEnded;
+            using (var panel = _forms.Create<UserManagementPanel>(_session))
+            {
+                panel.ShowDialog(this);
+                sessionEnded = panel.SessionEnded;
+            }
+
+            if (sessionEnded)
+            {
+                // The admin changed their own role or password: back to the sign-in screen.
+                SignOut();
+            }
+        }
+
+        /// <summary>Closes the panel and returns to the sign-in screen.</summary>
+        internal void SignOut()
+        {
+            SignedOut = true;
+            Close();
+        }
+
+        /// <summary>Opens a form of the car in the form (calendar or maintenance log); nothing without a car.</summary>
+        private void OpenForSelectedCar<T>()
+            where T : Form
+        {
+            if (SelectedCarId is not { } id || ShownCars.FirstOrDefault(c => c.Id == id) is not { } car)
+            {
+                return;
+            }
+
+            using var form = _forms.Create<T>(_session, id, car.Brand + " " + car.Model + " (" + car.Plate + ")");
+            form.ShowDialog(this);
         }
 
         private void btnRentals_Click(object? sender, EventArgs e)
@@ -364,10 +441,6 @@ namespace AracKiralama.UI
 
         private async void btnDeleteCar_Click(object? sender, EventArgs e) => await DeleteAsync();
 
-        private void btnSignOut_Click(object? sender, EventArgs e)
-        {
-            SignedOut = true;
-            Close();
-        }
+        private void btnSignOut_Click(object? sender, EventArgs e) => SignOut();
     }
 }

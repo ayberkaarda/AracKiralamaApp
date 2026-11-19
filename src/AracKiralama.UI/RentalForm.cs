@@ -20,8 +20,10 @@ namespace AracKiralama.UI
         private readonly ExclusiveOperation _rent = new();
         private int _days;
 
-        public RentalForm(ICarService cars, IRentalService rentals, UserSession session, int carId)
+        public RentalForm(ICarService cars, IRentalService rentals, IFormFactory forms, UserSession session, int carId)
         {
+            ArgumentNullException.ThrowIfNull(forms);
+            _forms = forms;
             ArgumentNullException.ThrowIfNull(cars);
             ArgumentNullException.ThrowIfNull(rentals);
             ArgumentNullException.ThrowIfNull(session);
@@ -48,7 +50,19 @@ namespace AracKiralama.UI
             _days = policy.MinRentalDays;
             txtDays.Text = _days.ToString(CultureInfo.InvariantCulture);
             btnConfirm.Enabled = false;
+            _rent.HoldClosingOf(this);
+
+            var calendar = new Button { Name = "btnCalendar", Text = "Müsaitlik Takvimi", AutoSize = true, Location = new Point(btnBack.Right + 16, btnBack.Top) };
+            calendar.Click += (_, _) =>
+            {
+                var title = Car is { } car ? car.Brand + " " + car.Model : AppText.Title;
+                using var form = _forms.Create<AvailabilityCalendarForm>(_session, _carId, title);
+                form.ShowDialog(this);
+            };
+            Controls.Add(calendar);
         }
+
+        private readonly IFormFactory _forms;
 
         /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]

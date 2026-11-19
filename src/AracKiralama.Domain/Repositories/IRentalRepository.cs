@@ -6,10 +6,10 @@ namespace AracKiralama.Domain.Repositories;
 public interface IRentalRepository
 {
     /// <summary>
-    /// Books a car: under the car's lock, inside the transaction, it checks that the car exists, is
-    /// listed, still costs <see cref="RentalRequest.ExpectedDailyPrice"/> a day and that no active
-    /// rental of the car shares a day with [<see cref="RentalRequest.StartDate"/>,
-    /// <see cref="RentalRequest.EndDate"/>), then stores the rental.
+    /// Books a car: under the car's lock, inside the transaction, it checks that the renter's session is
+    /// current, that the car exists, is listed, still costs <see cref="RentalRequest.ExpectedDailyPrice"/>
+    /// a day and that no active rental and no active maintenance record of the car shares a day with
+    /// [<see cref="RentalRequest.StartDate"/>, <see cref="RentalRequest.EndDate"/>), then stores the rental.
     /// </summary>
     Task<RentResult> RentAsync(RentalRequest request, CancellationToken cancellationToken = default);
 
@@ -28,18 +28,37 @@ public interface IRentalRepository
     /// </summary>
     Task<IReadOnlyList<RentalDetails>> GetActiveAsync(int? ownerId, CarFilter filter, CancellationToken cancellationToken = default);
 
-    /// <summary>The days of <paramref name="carId"/> held by active rentals that end after <paramref name="from"/>, in order.</summary>
+    /// <summary>
+    /// The days of <paramref name="carId"/> that cannot be booked, from <paramref name="from"/> on: held by
+    /// active rentals or active maintenance records that end after it, in order of their start.
+    /// </summary>
     Task<IReadOnlyList<BookedRange>> GetBookedRangesAsync(int carId, DateOnly from, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The days of <paramref name="carId"/> held by active rentals or active maintenance records that
+    /// share a day with [<paramref name="from"/>, <paramref name="until"/>), with their kind, in order of their start.
+    /// </summary>
+    Task<IReadOnlyList<BlockedRange>> GetBlockedRangesAsync(int carId, DateOnly from, DateOnly until, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The contract data of a rental in any state, or <see langword="null"/> when it does not exist or,
+    /// with <paramref name="ownerId"/> set, belongs to another account.
+    /// </summary>
+    Task<ContractData?> GetContractDataAsync(int rentalId, int? ownerId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>A rental to store; the price was computed from <see cref="ExpectedDailyPrice"/>.</summary>
+/// <summary>
+/// A rental to store for account <see cref="UserId"/>, whose session carries <see cref="SessionVersion"/>;
+/// the price was computed from <see cref="ExpectedDailyPrice"/>.
+/// </summary>
 public sealed record RentalRequest(
     int CarId,
     int UserId,
     DateOnly StartDate,
     DateOnly EndDate,
     decimal ExpectedDailyPrice,
-    decimal Price);
+    decimal Price,
+    int SessionVersion);
 
 public enum RentOutcome
 {
@@ -54,6 +73,9 @@ public enum RentOutcome
 
     /// <summary>The daily price changed after it was shown; nothing was written.</summary>
     PriceChanged = 4,
+
+    /// <summary>An active maintenance record of the car shares at least one day with the requested range; nothing was written.</summary>
+    InMaintenance = 5,
 }
 
 public readonly record struct RentResult(RentOutcome Outcome, int RentalId);

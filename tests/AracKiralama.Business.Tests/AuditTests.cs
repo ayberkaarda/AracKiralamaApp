@@ -31,7 +31,8 @@ public sealed class AuditTests
                 "auth.sign_in.succeeded", "auth.sign_in.failed", "auth.password.upgraded", "auth.account.registered",
                 "auth.password.changed", "auth.password.change_refused", "setup.first_admin.created", "setup.key.refused",
                 "access.denied", "car.changed", "rental.created", "rental.overlap_refused", "rental.ended",
-                "account.changed", "auth.account.registration_not_completed",
+                "account.changed", "auth.account.registration_not_completed", "maintenance.changed", "maintenance.refused",
+                "report.revenue.created", "rental.contract.created",
             ],
             Enum.GetValues<AuditEvent>().Select(AuditCodes.Of));
         Assert.Equal(["unknown", "user", "admin"], Enum.GetValues<AuditRole>().Select(AuditCodes.Of));
@@ -60,11 +61,11 @@ public sealed class AuditTests
         var hash = _hasher.Hash(Password);
         _users.Setup(u => u.FindByUserNameAsync("kimse", It.IsAny<CancellationToken>())).ReturnsAsync((AccountCredentials?)null);
         _users.Setup(u => u.FindByUserNameAsync("kilitli", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AccountCredentials(8, "kilitli", UserRole.Admin, hash, PasswordFormat.Pbkdf2, 5, Now.AddMinutes(10)));
+            .ReturnsAsync(new AccountCredentials(8, "kilitli", UserRole.Admin, hash, PasswordFormat.Pbkdf2, 5, Now.AddMinutes(10), 0));
         _users.Setup(u => u.FindByUserNameAsync("ornek", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AccountCredentials(7, "ornek", UserRole.Admin, hash, PasswordFormat.Pbkdf2, 0, null));
+            .ReturnsAsync(new AccountCredentials(7, "ornek", UserRole.Admin, hash, PasswordFormat.Pbkdf2, 0, null, 0));
         _users.Setup(u => u.FindByUserNameAsync("yaris", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AccountCredentials(9, "yaris", UserRole.User, hash, PasswordFormat.Pbkdf2, 0, null));
+            .ReturnsAsync(new AccountCredentials(9, "yaris", UserRole.User, hash, PasswordFormat.Pbkdf2, 0, null, 0));
         _users.Setup(u => u.RecordFailedLoginAsync(7, It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _users.Setup(u => u.RecordSuccessfulLoginAsync(It.Is<AccountCredentials>(a => a.Id == 9), It.IsAny<DateTime>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -130,6 +131,7 @@ public sealed class AuditTests
             _users.Object,
             _hasher,
             new TestDatabaseClock(time),
+            new AccessGuard(_users.Object, audit ?? _audit),
             audit ?? _audit,
             TestValidators.SignIn,
             TestValidators.SignUp,

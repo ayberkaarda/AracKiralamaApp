@@ -22,6 +22,9 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         // can run between the checks below and the commit.
         await Locks.CarAsync(db, request.CarId, cancellationToken).ConfigureAwait(false);
 
+        // The renter's account must still exist with the session it booked from.
+        await Actors.RequireAsync(db, new Actor(request.UserId, request.SessionVersion), admin: false, cancellationToken).ConfigureAwait(false);
+
         var car = await db.Cars
             .AsNoTracking()
             .Where(c => c.Id == request.CarId)
@@ -46,6 +49,12 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         if (await OverlapsAsync(db, request.CarId, request.StartDate, request.EndDate, cancellationToken).ConfigureAwait(false))
         {
             return new RentResult(RentOutcome.Overlaps, 0);
+        }
+
+        // Maintenance takes the same lock, so no record can appear on these days before the commit.
+        if (await MaintenanceRepository.OverlapsAsync(db, request.CarId, request.StartDate, request.EndDate, cancellationToken).ConfigureAwait(false))
+        {
+            return new RentResult(RentOutcome.InMaintenance, 0);
         }
 
         var rental = new Rental
@@ -85,11 +94,10 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-        // Checked first, so an account that lost the admin role learns nothing about other accounts' rentals.
-        await Actors.RequireAsync(db, actor.UserId, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
         int? ownerId = actor.AsAdmin ? null : actor.UserId;
 
-        // The car decides which lock to take; a rental of another account is the same as none.
+        // The car decides which lock to take; a rental of another account is the same as none. Only the car
+        // id is read before the lock, and a rental never moves to another car.
         var carId = await Owned(db.Rentals.AsNoTracking(), ownerId)
             .Where(r => r.Id == rentalId && r.Status == RentalStatus.Active)
             .Select(r => (int?)r.CarId)
@@ -97,10 +105,17 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
             .ConfigureAwait(false);
         if (carId is null)
         {
+            // Checked anyway, so an account that lost the admin role gets the same answer for a missing
+            // rental as for an existing one and learns nothing about other accounts' rentals.
+            await Actors.RequireAsync(db, actor.Actor, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
             return new EndRentalResult(EndRentalOutcome.NotFound);
         }
 
+        // The car's lock first, then the actor, in the same order as every other write of a car: the actor
+        // check holds a shared lock on the account row, and holding it while waiting for the car's lock
+        // could close a deadlock cycle with a car write that waits for that row.
         await Locks.CarAsync(db, carId.Value, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor.Actor, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
 
         // Read again under the lock: a concurrent end of the same rental has finished by now.
         var startDate = await Owned(db.Rentals.AsNoTracking(), ownerId)
@@ -164,15 +179,56 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
 
     public async Task<IReadOnlyList<BookedRange>> GetBookedRangesAsync(int carId, DateOnly from, CancellationToken cancellationToken = default)
     {
+        var blocked = await GetBlockedRangesAsync(carId, from, DateOnly.MaxValue, cancellationToken).ConfigureAwait(false);
+        return blocked.Select(b => new BookedRange(b.StartDate, b.EndDate)).ToList();
+    }
+
+    public async Task<IReadOnlyList<BlockedRange>> GetBlockedRangesAsync(int carId, DateOnly from, DateOnly until, CancellationToken cancellationToken = default)
+    {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var ranges = await db.Rentals
+        var rentals = await db.Rentals
             .AsNoTracking()
-            .Where(r => r.CarId == carId && r.Status == RentalStatus.Active && r.EndDate > from)
-            .OrderBy(r => r.StartDate)
+            .Where(r => r.CarId == carId && r.Status == RentalStatus.Active && r.EndDate > from && r.StartDate < until)
             .Select(r => new { r.StartDate, r.EndDate })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-        return ranges.Select(r => new BookedRange(r.StartDate, r.EndDate)).ToList();
+        var maintenance = await db.Maintenance
+            .AsNoTracking()
+            .Where(m => m.CarId == carId && m.Status == MaintenanceStatus.Active && m.EndDate > from && m.StartDate < until)
+            .Select(m => new { m.StartDate, m.EndDate })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return rentals.Select(r => new BlockedRange(r.StartDate, r.EndDate, BlockKind.Rental))
+            .Concat(maintenance.Select(m => new BlockedRange(m.StartDate, m.EndDate, BlockKind.Maintenance)))
+            .OrderBy(b => b.StartDate)
+            .ThenBy(b => b.Kind)
+            .ToList();
+    }
+
+    public async Task<ContractData?> GetContractDataAsync(int rentalId, int? ownerId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var query =
+            from rental in Owned(db.Rentals.AsNoTracking(), ownerId)
+            join car in db.Cars.AsNoTracking() on rental.CarId equals car.Id
+            join user in db.Users.AsNoTracking() on rental.UserId equals user.Id
+            where rental.Id == rentalId
+            select new ContractData(
+                rental.Id,
+                rental.Status,
+                car.Brand,
+                car.Model,
+                car.Year,
+                car.Color,
+                car.Plate,
+                user.Email,
+                user.Phone,
+                rental.StartDate,
+                rental.EndDate,
+                rental.ReturnedOn,
+                rental.Price);
+
+        return await query.SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

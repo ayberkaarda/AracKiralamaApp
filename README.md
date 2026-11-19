@@ -45,11 +45,40 @@ layers; database access uses EF Core, and the database is created, migrated or u
 - ✅ **Cars** ("Yönetim Paneli", Admin Panel): add ("Araç Ekle"), change ("Aracı Güncelle") and delete ("Aracı Sil")
   cars with brand, model, year, gearbox, fuel type, mileage, colour, plate, daily price and picture link ("Resim
   Linki"). Every invalid field is marked next to its control. Plates are unique. A car with rental history cannot be
-  deleted; "Kiralamaya açık" (Open for rental) hides it from customers instead.
+  deleted; "Kiralamaya açık" (Open for rental) hides it from customers instead. A change from a form opened before
+  another admin's change (a new price, the car taken off the list) is refused and the car is loaded again.
 - ✅ **Accounts** ("Kullanıcı Yönetim Paneli", User Management Panel): add, change and delete accounts with role,
   e-mail and phone (masked in the list); a new password replaces the old one and lifts a lock. Admins and accounts
-  with rentals cannot be deleted, and the last admin keeps the admin role.
+  with rentals cannot be deleted, and the last admin keeps the admin role. A change from a form opened before the
+  account's role or password changed elsewhere is refused and the account is loaded again, so a stale form cannot give
+  back a role another admin just removed. An admin who changes their own role or password is signed out.
 - ✅ **Rentals** ("Kiralanan Araçlar", Rented Cars): every active rental, filterable by brand, gearbox and fuel type.
+
+### Calendar, maintenance, reports and contracts
+
+- ✅ **Availability calendar** ("Müsaitlik Takvimi"): a month of one car, every day marked "Boş" (free), "Dolu"
+  (booked), "Bakım" (maintenance or damage repair) or "Geçmiş" (past), decided with the database's today, which also
+  chooses the first month shown. Customers open it from the rental screen for listed cars and see every day before
+  today as past; admins open it from the admin panel for any car and also see the past days of rentals and
+  maintenance. The state is written in every cell, so the colours only help; under high contrast the system colours
+  stay. Quick clicks on the month buttons add up; the latest month asked for is shown.
+- ✅ **Maintenance and damage log** ("Bakım / Hasar Kayıtları", admin): planned maintenance or a damage repair with
+  its days, description and optional cost. The car cannot be booked on those days, and a record cannot take days of
+  an active rental or of another active record of the car. A record entered by mistake is cancelled, never deleted. A
+  save from a form opened before another admin's change is refused and the record is loaded again; any other refusal
+  keeps what the admin typed. Times are stamped with the database's clock when the write happens.
+- ✅ **Revenue report** ("Gelir Raporu", admin): rentals by month or day and by car between two days, with the
+  agreed price of every rental picked up by today (returned or under way) in the period of its pick-up day; the
+  screen starts with this month up to the database's today. Rentals that have not started yet can still be cancelled
+  without charge and are not counted, so a past report does not change later; cancelled rentals earn nothing. A month
+  the range covers only in part names its days, and the days are the booked days. The screen and the CSV state this
+  in a note. "CSV Olarak Kaydet" saves the report on the screen as UTF-8 CSV with ";" separators; every field is quoted and a
+  value starting with `=`, `+`, `-`, `@` or a control character is written as text, never as a formula.
+- ✅ **Rental contract** ("Sözleşme" on every rental card): a printable HTML page with the rental, the car and the
+  renter's e-mail address and phone. Every value is HTML encoded, the page runs no script, loads nothing and allows
+  only its own style block through a Content-Security-Policy; it contains no sign-in name, account id, password or
+  session data.
+  Customers get their own contracts only; admins any.
 
 ### Security
 
@@ -60,6 +89,15 @@ layers; database access uses EF Core, and the database is created, migrated or u
 - ✅ Every call is checked against the signed-in session, and every privileged operation reads the account's role
   again from the database: a deleted or demoted admin's open session loses its rights at once. Customers reach only
   their own rentals; another account's rental gets the same answer as a missing one.
+- ✅ Every account has a session version, raised by every role change, every password an admin sets and the
+  account's own password change. A session from before the change is refused for good, also when the change is
+  undone (an admin demoted and promoted again signs in again). Every write, also the own password change, checks the
+  version, the role and the account inside its own statement or transaction. "Şifre Değiştir" ends the account's
+  other sessions, for example one opened elsewhere with a stolen password; the window that changed it keeps working.
+- ✅ Bookings, cancellations, returns, car changes and maintenance writes of one car wait for the car's lock (30
+  seconds at most, always shorter than the command timeout) and take it before they check the acting account, all in
+  the same order; a busy lock, and a transaction SQL Server ends as a deadlock victim, end with "İşlem meşgul ... tekrar
+  deneyin" and nothing written.
 - ✅ Central FluentValidation validators with Turkish messages (empty fields, e-mail format, password policy, car
   fields, rental days and dates); write buttons ignore repeated clicks while an operation is pending.
 - ✅ Daily log files without personal data, with anonymous audit codes.
@@ -87,6 +125,10 @@ application's screens, which no longer exist, and were removed.
 | Add, change or delete cars | ❌ | ✅ |
 | Add, change or delete accounts, set roles | ❌ | ✅ (no admin deleted, the last admin stays admin) |
 | Create the first admin | ❌ (empty database, or with the owner's setup key only) | - |
+| See a car's availability calendar | ✅ listed cars | ✅ any car |
+| Log, change or cancel maintenance and damage records | ❌ | ✅ |
+| Revenue report and its CSV | ❌ | ✅ |
+| Save a rental contract | ✅ their own rentals | ✅ any rental |
 
 ---
 
@@ -235,6 +277,11 @@ dotnet ef migrations add <Name> --project src/AracKiralama.Data --output-dir Per
 The design-time factory reads `ARAC_CONNECTION` and otherwise uses a local SQL Server Express instance. Apply
 migrations with the database owner's connection; the application's restricted login has no DDL rights.
 
+The migrations after the first one are `AddSessionVersion` (the accounts' session version, `OturumSurumu`),
+`AddMaintenanceLog` (the `AracBakim` table of the maintenance and damage log) and `AddCarVersion` (the cars' version,
+`Surum`, which refuses a change from a stale form). After applying them run `docs/grant-app-login.sql` again, so the
+application's login can use the new table; new columns are covered by the existing table rights.
+
 **Upgrading the original application's database:** `dotnet ef database update` does **not** upgrade it. Such a
 database has the tables `Kullanicilar`, `Araclar` and `Kiralama` but no migrations history, so EF Core would try to
 create the tables again. Start the application instead: on start-up `DatabaseInitializer` first runs the legacy
@@ -270,9 +317,9 @@ contains the plain text passwords.
   key from 16 random bytes (128 bits), stores only its SHA-256 hash in the `KurulumAnahtarlari` table and shows the
   key once. It refuses to issue a key when the database already has an admin.
 - `docs/grant-app-login.sql` gives the application's own login example rights: on the key table only reading and
-  marking a key used; it cannot add, delete or change a key. Rentals are never deleted. Do the first start (schema
-  creation or upgrade) with the database owner's connection, then point the application's connection string at
-  this login.
+  marking a key used; it cannot add, delete or change a key. Rentals and maintenance records are never deleted. Do
+  the first start (schema creation or upgrade) with the database owner's connection, then point the application's
+  connection string at this login.
 - Type the key into the form (dashes, spaces and letter case do not matter) or provide it with the
   `ARAC_SETUP_KEY` environment variable, which only fills in the field. A key is valid for 24 hours and works once:
   it is marked used together with the write that creates the admin account. Its expiry is decided by the
@@ -331,9 +378,9 @@ dotnet test -c Release
 
 | Project | Type | Scope |
 |---|---|---|
-| `tests/AracKiralama.Business.Tests` | Unit | Validator limits and message order (user name 3/32, password 8/64, e-mail, phone, car fields, plates, rental days and dates), kept legacy values, audit codes, PBKDF2 and format upgrade, lockout, booking and price rules, ownership and admin checks with strict Moq mocks |
-| `tests/AracKiralama.Data.Tests` | Integration | Services and repositories on SQLite in-memory (overlap boundaries, shortest and longest rental, booking horizon, cancel or return by day, IDOR answers, lockout length, demoted sessions, refused input writes nothing); booking and lockout races, setup keys with the restricted login and the legacy upgrade on SQL Server |
-| `tests/AracKiralama.UI.Tests` | Unit | Example configuration, error messages, log content and retention, picture address checks, focus after unlock, write guards, latest-wins loading, neutral branding |
+| `tests/AracKiralama.Business.Tests` | Unit | Validator limits and message order (user name 3/32, password 8/64, e-mail, phone, car fields, plates, rental days and dates), kept legacy values, audit codes, PBKDF2 and format upgrade, lockout, booking and price rules, ownership and admin checks with strict Moq mocks, session versions, maintenance input, calendar states, revenue sums and limits, formula-safe CSV, contract encoding and CSP |
+| `tests/AracKiralama.Data.Tests` | Integration | Services and repositories on SQLite in-memory (overlap boundaries, shortest and longest rental, booking horizon, cancel or return by day, IDOR answers, lockout length, demoted sessions, refused input writes nothing); maintenance blocks and stale versions, calendar, revenue and contract owner checks, sessions ended by role or password changes; booking, lockout, maintenance and stale-save races, a busy car lock under a short command timeout, setup keys and every new feature under the restricted login and the legacy upgrade on SQL Server |
+| `tests/AracKiralama.UI.Tests` | Unit | Example configuration, error messages, log content and retention, picture address checks, focus after unlock, write guards, latest-wins loading of calendar months and reports, single maintenance and contract saves, stale-save reloads, font-sized calendar cells, neutral branding |
 
 The SQL Server tests use throw-away databases on the server in `ARAC_TEST_SQLSERVER` (default: local SQL Express
 with Windows authentication). They are skipped when `ARAC_SKIP_SQL_TESTS=1` is set or no server is reachable; with
