@@ -208,6 +208,48 @@ internal sealed class HeadingLabel : Label
     }
 }
 
+/// <summary>
+/// One line of text that ends in an ellipsis when its column is too narrow (a long user name), instead of
+/// growing past its container; its height follows its font, also after the window is scaled.
+/// </summary>
+internal sealed class LineLabel : Label
+{
+    public LineLabel()
+    {
+        AutoSize = false;
+        AutoEllipsis = true;
+        UseMnemonic = false;
+    }
+
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        var width = proposedSize.Width is > 1 and < int.MaxValue / 2 ? proposedSize.Width : Width;
+        return new Size(width, LineHeight);
+    }
+
+    private int LineHeight => TextRenderer.MeasureText("Ag", Font, Size.Empty, TextFormatFlags.SingleLine).Height + Padding.Vertical;
+
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        Fit();
+    }
+
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        base.OnSizeChanged(e);
+        Fit();
+    }
+
+    private void Fit()
+    {
+        if (Height != LineHeight)
+        {
+            Height = LineHeight;
+        }
+    }
+}
+
 /// <summary>A short horizontal mark in the warm brand color, under a title.</summary>
 internal sealed class BrandRule : Control
 {

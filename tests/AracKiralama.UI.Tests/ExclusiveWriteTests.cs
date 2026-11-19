@@ -2,6 +2,7 @@ using AracKiralama.Business;
 using AracKiralama.Business.Services;
 using AracKiralama.UI.Infrastructure;
 using AracKiralama.UI.Tests.Support;
+using AracKiralama.UI.Theming;
 using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
@@ -196,7 +197,6 @@ public sealed class ExclusiveWriteTests
     public void EndRental_AlreadyEnded_RefreshesTheList() => Run(() =>
     {
         const string NotFound = "Kiralama bulunamadı veya zaten sona ermiş.";
-        var shownBefore = NoDialogs.Requested.Count(r => r.Contains(NotFound, StringComparison.Ordinal));
         var rentals = new ControlledRentalService();
         using var profile = new ProfileForm(rentals, new ControlledContractService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         using var panel = new RentedCarsPanel(rentals, new ControlledCarService(), new ControlledContractService(), Sessions.Admin) { Prompts = new RecordingPrompts() };
@@ -214,7 +214,8 @@ public sealed class ExclusiveWriteTests
         Assert.Equal([10], profile.ShownRentals.Select(r => r.Id));
         Assert.Equal([10], panel.ShownRentals.Select(r => r.Id));
         Assert.True(Assert.Single(profile.EndButtons).Enabled);
-        Assert.Equal(shownBefore + 2, NoDialogs.Requested.Count(r => r.Contains(NotFound, StringComparison.Ordinal)));
+        Assert.Equal((StatusKind.Warning, NotFound), (profile.StatusBar.Kind, profile.StatusBar.Text));
+        Assert.Equal((StatusKind.Warning, NotFound), (panel.StatusBar.Kind, panel.StatusBar.Text));
     });
 
     /// <summary>A booking refused because the days were taken meanwhile shows the taken days as they are now.</summary>

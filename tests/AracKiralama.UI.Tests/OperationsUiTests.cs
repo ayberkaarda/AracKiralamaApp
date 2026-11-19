@@ -1,6 +1,7 @@
 using AracKiralama.Business.Services;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Tests.Support;
+using AracKiralama.UI.Theming;
 using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
@@ -321,24 +322,43 @@ public sealed class OperationsUiTests
         Assert.True(Find<Button>(form, "btnMaintenance").Enabled);
     });
 
-    /// <summary>The contract button on a rental card fits its text at any font size and keeps its right edge next to the end button.</summary>
+    /// <summary>
+    /// The buttons on a rental card fit their text at any text size and never run into each other, and the stage
+    /// of the rental is written beside the car's name, however long the name is.
+    /// </summary>
     [Theory]
-    [InlineData(9f)]
-    [InlineData(14f)]
-    [InlineData(20f)]
-    [InlineData(28f)]
-    public void RentalCard_ContractButtonFitsItsTextAtAnyFontSize(float size) => Run(() =>
+    [InlineData(1F)]
+    [InlineData(1.5F)]
+    [InlineData(2F)]
+    public void RentalCard_ButtonsFitTheirTextAtAnyTextSize(float scale) => Run(() =>
     {
-        var (card, end, contract) = Infrastructure.RentalCards.Build(ControlledRentalService.Rental(9), underway: false, showRenter: false, () => Task.CompletedTask, () => Task.CompletedTask);
-        using (card)
-        using (var font = new Font("Segoe UI", size))
+        var previous = Theme.Current;
+        var previousScale = Theme.RenderScale;
+        Theme.Use(previous, scale);
+        try
         {
-            contract.Font = font;
+            var rental = ControlledRentalService.Rental(9) with { Model = "Uzun Şaseli Yüksek Tavanlı Panelvan Kombi" };
+            var (card, end, contract) = Infrastructure.RentalCards.Build(rental, underway: false, showRenter: true, () => Task.CompletedTask, () => Task.CompletedTask);
+            using (card)
+            {
+                card.SetBounds(0, 0, Theme.Px(card, Infrastructure.RentalCards.MinWidth), 400);
+                card.Height = card.GetPreferredSize(new Size(card.Width, 0)).Height;
+                CreateHandles(card);
+                card.PerformLayout();
 
-            var needed = TextRenderer.MeasureText(contract.Text, font);
-            Assert.True(needed.Width < contract.Width && needed.Height < contract.Height, $"{needed} does not fit {contract.Size} at {size} pt.");
-            Assert.True(contract.Width >= 120 && contract.Height >= 40);
-            Assert.Equal(end.Left - 10, contract.Right);
+                foreach (var button in new[] { end, contract })
+                {
+                    Assert.True(TextRenderer.MeasureText(button.Text, button.Font).Width < button.Width, $"{button.Text} is cut at {scale}x.");
+                }
+
+                Assert.False(end.Bounds.IntersectsWith(contract.Bounds));
+                Assert.Equal(Infrastructure.RentalCards.CancelText, end.Text);
+                Assert.Equal("Başlamadı", Find<Control>(card, "lblStage9").Text);
+            }
+        }
+        finally
+        {
+            Theme.Use(previous, previousScale);
         }
     });
 
@@ -357,4 +377,13 @@ public sealed class OperationsUiTests
             Assert.Same(panel, button.Parent);
         }
     });
+
+    private static void CreateHandles(Control control)
+    {
+        _ = control.Handle;
+        foreach (Control child in control.Controls)
+        {
+            CreateHandles(child);
+        }
+    }
 }

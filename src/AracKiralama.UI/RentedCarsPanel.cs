@@ -1,12 +1,14 @@
+using System.Globalization;
 using AracKiralama.Business;
 using AracKiralama.Business.Services;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI
 {
     /// <summary>The admin's list of every active rental, filtered by brand, gearbox and fuel, with the cancellation or return of each.</summary>
-    public partial class RentedCarsPanel : Form
+    public sealed class RentedCarsPanel : AppDialog
     {
         private readonly IRentalService _rentals;
         private readonly ICarService _cars;
@@ -14,10 +16,24 @@ namespace AracKiralama.UI
         private readonly ExclusiveOperation _end = new();
         private readonly RequestSequence _loads = new();
         private readonly CarFilterBoxes _filter;
-        private readonly Panel _listPanel;
         private CarFilter _applied = CarFilter.None;
 
+        private readonly ThemedComboBox cmbBrand = FormLayout.Picker(nameof(cmbBrand), 170);
+        private readonly ThemedComboBox cmbTransmission = FormLayout.Picker(nameof(cmbTransmission), 150);
+        private readonly ThemedComboBox cmbFuelType = FormLayout.Picker(nameof(cmbFuelType), 150);
+        private readonly ThemedButton btnApplyFilter = FormLayout.Button(nameof(btnApplyFilter), "Filtrele", ButtonKind.Secondary, Glyphs.Filter);
+        private readonly Label lblCount = FormLayout.Hint(string.Empty);
+        private readonly CardGrid grdRentals = new()
+        {
+            Name = nameof(grdRentals),
+            EmptyText = "Bu seçimlere uyan aktif kiralama yok.",
+            LoadingText = "Kiralamalar yükleniyor…",
+            MinCardWidth = RentalCards.MinWidth,
+        };
+        private readonly ThemedButton btnClose = FormLayout.Button(nameof(btnClose), "Kapat", ButtonKind.Secondary);
+
         public RentedCarsPanel(IRentalService rentals, ICarService cars, IContractService contracts, UserSession session)
+            : base("Kiralamalar", "Tüm aktif kiralamalar; iptal edin, iade alın ya da sözleşmeyi kaydedin.", Glyphs.List, new Size(1000, 660), new Size(720, 520), modal: true)
         {
             ArgumentNullException.ThrowIfNull(rentals);
             ArgumentNullException.ThrowIfNull(cars);
@@ -28,27 +44,15 @@ namespace AracKiralama.UI
             _cars = cars;
             _session = session;
             Contracts = new ContractExport(contracts, session);
-            Prompts = new MessageBoxPrompts(this);
+            BuildLayout();
+            _filter = new CarFilterBoxes(cmbBrand, cmbTransmission, cmbFuelType);
             _end.HoldClosingOf(this);
             Contracts.Operation.HoldClosingOf(this);
 
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
-            _listPanel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
-            Controls.Add(_listPanel);
-            _filter = BuildFilterPanel();
-            // The filling list docks last, below the filter bar.
-            Controls.SetChildIndex(_listPanel, 0);
+            Load += async (_, _) => await this.RunAsync(RefreshAsync);
+            btnApplyFilter.Click += async (_, _) => await this.RunAsync(ApplyFilterAsync);
+            btnClose.Click += (_, _) => Close();
         }
-
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         internal IReadOnlyList<RentalDetails> ShownRentals { get; private set; } = [];
 
@@ -60,14 +64,14 @@ namespace AracKiralama.UI
         /// <summary>Saves the rentals' contracts; its dialog and file writer are replaced in tests.</summary>
         internal ContractExport Contracts { get; }
 
+        internal CarFilterBoxes Filter => _filter;
+
         /// <summary>Saves the contract of a rental; ignored while another save runs.</summary>
         internal Task<bool> SaveContractAsync(RentalDetails rental)
         {
             ArgumentNullException.ThrowIfNull(rental);
             return Contracts.SaveAsync(this, Prompts, rental.Id, ContractButtons);
         }
-
-        internal CarFilterBoxes Filter => _filter;
 
         internal async Task RefreshAsync()
         {
@@ -79,10 +83,21 @@ namespace AracKiralama.UI
         internal async Task LoadRentalsAsync()
         {
             var request = _loads.Next();
-            var rentals = await _rentals.GetActiveRentalsAsync(_session, _applied);
-            if (_loads.IsLatest(request) && !IsDisposed)
+            grdRentals.IsLoading = true;
+            try
             {
-                ShowRentals(rentals);
+                var rentals = await _rentals.GetActiveRentalsAsync(_session, _applied);
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    ShowRentals(rentals);
+                }
+            }
+            finally
+            {
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    grdRentals.IsLoading = false;
+                }
             }
         }
 
@@ -121,89 +136,57 @@ namespace AracKiralama.UI
                     }
 
                     ended = true;
-                    Prompts.Inform(ending == RentalEnding.Cancelled ? "Kiralama başarıyla iptal edildi." : "Araç iade alındı.");
                     await LoadRentalsAsync();
+                    Prompts.Inform(ending == RentalEnding.Cancelled ? "Kiralama başarıyla iptal edildi." : "Araç iade alındı.");
                 },
                 [.. EndButtons]);
             return ended;
         }
 
-        protected override async void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            await this.RunAsync(RefreshAsync);
-        }
-
-        private CarFilterBoxes BuildFilterPanel()
-        {
-            var panel = new Panel
-            {
-                Size = new Size(Width, 60),
-                Dock = DockStyle.Top,
-                BackColor = Color.FromArgb(245, 245, 245),
-                BorderStyle = BorderStyle.FixedSingle,
-            };
-            Controls.Add(panel);
-
-            var brand = new ComboBox { Name = "cmbBrand", Location = new Point(60, 15), Width = 120 };
-            var transmission = new ComboBox { Name = "cmbTransmission", Location = new Point(270, 15), Width = 120 };
-            var fuel = new ComboBox { Name = "cmbFuelType", Location = new Point(490, 15), Width = 120 };
-            var apply = new Button
-            {
-                Name = "btnApplyFilter",
-                Text = "Filtrele",
-                Location = new Point(640, 12),
-                Size = new Size(100, 30),
-                BackColor = Color.SteelBlue,
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-            };
-            apply.Click += async (_, _) => await this.RunAsync(ApplyFilterAsync);
-
-            panel.Controls.AddRange(
-            [
-                new Label { Text = "Marka:", Location = new Point(10, 20), AutoSize = true },
-                brand,
-                new Label { Text = "Vites Tipi:", Location = new Point(200, 20), AutoSize = true },
-                transmission,
-                new Label { Text = "Yakıt Tipi:", Location = new Point(415, 20), AutoSize = true },
-                fuel,
-                apply,
-            ]);
-            return new CarFilterBoxes(brand, transmission, fuel);
-        }
-
         private void ShowRentals(IReadOnlyList<RentalDetails> rentals)
         {
             ShownRentals = rentals;
-            var buttons = new List<Button>();
-            var contractButtons = new List<Button>();
-            _listPanel.SuspendLayout();
-            try
+            var cards = new List<Control>(rentals.Count);
+            var buttons = new List<Button>(rentals.Count);
+            var contractButtons = new List<Button>(rentals.Count);
+            foreach (var rental in rentals)
             {
-                foreach (Control old in _listPanel.Controls.Cast<Control>().ToList())
-                {
-                    old.Dispose();
-                }
-
-                var top = 20 + _listPanel.AutoScrollPosition.Y;
-                for (var i = 0; i < rentals.Count; i++)
-                {
-                    var current = rentals[i];
-                    var (card, button, contract) = RentalCards.Build(current, _rentals.IsUnderway(current), showRenter: true, () => EndAsync(current), () => SaveContractAsync(current));
-                    card.Location = new Point(i % 2 == 0 ? 20 : 650, top + (i / 2 * (RentalCards.Height + 20)));
-                    _listPanel.Controls.Add(card);
-                    buttons.Add(button);
-                    contractButtons.Add(contract);
-                }
-            }
-            finally
-            {
-                _listPanel.ResumeLayout();
+                var current = rental;
+                var (card, end, contract) = RentalCards.Build(current, _rentals.IsUnderway(current), showRenter: true, () => EndAsync(current), () => SaveContractAsync(current));
+                cards.Add(FormLayout.ScaledFor(card, grdRentals));
+                buttons.Add(end);
+                contractButtons.Add(contract);
             }
 
+            grdRentals.Replace(cards);
             EndButtons = buttons;
             ContractButtons = contractButtons;
+            lblCount.Text = rentals.Count == 0 ? string.Empty : string.Create(CultureInfo.CurrentCulture, $"{rentals.Count} kiralama");
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(RentedCarsPanel);
+            lblCount.Name = nameof(lblCount);
+            lblCount.Margin = new Padding(Spacing.L, 0, 0, Spacing.M);
+            var filters = FormLayout.FieldRow(
+                "filterRow",
+                (FormLayout.Field("&Marka", cmbBrand), 0),
+                (FormLayout.Field("&Vites", cmbTransmission), 0),
+                (FormLayout.Field("&Yakıt", cmbFuelType), 0),
+                (FormLayout.FieldAction(btnApplyFilter), 0),
+                (FormLayout.Spacer("filterSpacer"), 100),
+                (lblCount, 0));
+            lblCount.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
+            var filterCard = FormLayout.Card("filterCard", null, filters, fill: false);
+            filterCard.Padding = new Padding(Spacing.L, Spacing.M, Spacing.L, 0);
+            Content.Controls.Add(FormLayout.Page("rentalsPage", (filterCard, false), (grdRentals, true)));
+
+            AcceptButton = btnApplyFilter;
+            CancelButton = btnClose;
+            SetFooterNote("İptal alış gününden önce, iade alış gününden itibaren yapılır; ücret değişmez.");
+            SetFooterButtons(btnClose);
+            FinishLayout();
         }
     }
 }

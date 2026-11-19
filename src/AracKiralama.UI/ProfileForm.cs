@@ -2,20 +2,32 @@ using AracKiralama.Business;
 using AracKiralama.Business.Services;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI
 {
-    /// <summary>The customer's profile: own active rentals with their cancellation or return, and the password change.</summary>
-    public partial class ProfileForm : Form
+    /// <summary>The customer's own active rentals with their cancellation or return and contract, and the password change.</summary>
+    public sealed class ProfileForm : AppDialog
     {
         private readonly IRentalService _rentals;
         private readonly IFormFactory _forms;
         private readonly UserSession _session;
         private readonly ExclusiveOperation _end = new();
         private readonly RequestSequence _loads = new();
-        private readonly Panel _scrollPanel;
+
+        private readonly Label lblGreeting = new() { Name = nameof(lblGreeting), AutoSize = true, UseMnemonic = false, TextAlign = ContentAlignment.MiddleRight };
+        private readonly CardGrid grdRentals = new()
+        {
+            Name = nameof(grdRentals),
+            EmptyText = "Aktif kiralamanız yok. Araçlar ekranından bir araç kiralayabilirsiniz.",
+            LoadingText = "Kiralamalarınız yükleniyor…",
+            MinCardWidth = RentalCards.MinWidth,
+        };
+        private readonly ThemedButton btnChangePassword = FormLayout.Button(nameof(btnChangePassword), "Şifre Değiştir", ButtonKind.Secondary, Glyphs.Lock);
+        private readonly ThemedButton btnClose = FormLayout.Button(nameof(btnClose), "Kapat", ButtonKind.Secondary);
 
         public ProfileForm(IRentalService rentals, IContractService contracts, IFormFactory forms, UserSession session)
+            : base("Kiralamalarım", "Aktif kiralamalarınız: başlamamış olanı iptal edin, başlamış olanı iade edin, sözleşmeyi kaydedin.", Glyphs.List, new Size(900, 600), new Size(640, 480), modal: true)
         {
             ArgumentNullException.ThrowIfNull(rentals);
             ArgumentNullException.ThrowIfNull(contracts);
@@ -26,32 +38,15 @@ namespace AracKiralama.UI
             _forms = forms;
             _session = session;
             Contracts = new ContractExport(contracts, session);
-            Prompts = new MessageBoxPrompts(this);
+            BuildLayout();
             _end.HoldClosingOf(this);
             Contracts.Operation.HoldClosingOf(this);
+            lblGreeting.Text = AppText.DisplayName(session.UserName) + Environment.NewLine + "Müşteri hesabı";
 
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
-            BuildHeader();
-            _scrollPanel = new Panel
-            {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
-                BackColor = Color.WhiteSmoke,
-                Padding = new Padding(0, 10, 0, 0),
-            };
-            Controls.Add(_scrollPanel);
-            Controls.SetChildIndex(_scrollPanel, 0);
+            Load += async (_, _) => await this.RunAsync(LoadRentalsAsync);
+            btnChangePassword.Click += (_, _) => ChangePassword();
+            btnClose.Click += (_, _) => Close();
         }
-
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         /// <summary>The rentals shown now, for tests.</summary>
         internal IReadOnlyList<RentalDetails> ShownRentals { get; private set; } = [];
@@ -72,13 +67,25 @@ namespace AracKiralama.UI
             return Contracts.SaveAsync(this, Prompts, rental.Id, ContractButtons);
         }
 
+        /// <summary>Loads the account's active rentals; only the latest request is shown.</summary>
         internal async Task LoadRentalsAsync()
         {
             var request = _loads.Next();
-            var rentals = await _rentals.GetMyActiveRentalsAsync(_session);
-            if (_loads.IsLatest(request) && !IsDisposed)
+            grdRentals.IsLoading = true;
+            try
             {
-                ShowRentals(rentals);
+                var rentals = await _rentals.GetMyActiveRentalsAsync(_session);
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    ShowRentals(rentals);
+                }
+            }
+            finally
+            {
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    grdRentals.IsLoading = false;
+                }
             }
         }
 
@@ -113,92 +120,54 @@ namespace AracKiralama.UI
                     }
 
                     ended = true;
-                    Prompts.Inform(ending == RentalEnding.Cancelled ? "Kiralama başarıyla iptal edildi." : "Araç iade alındı.");
                     await LoadRentalsAsync();
+                    Prompts.Inform(ending == RentalEnding.Cancelled ? "Kiralama başarıyla iptal edildi." : "Araç iade alındı.");
                 },
                 [.. EndButtons]);
             return ended;
         }
 
-        protected override async void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            await this.RunAsync(LoadRentalsAsync);
-        }
-
-        private void BuildHeader()
-        {
-            var header = new Panel
-            {
-                Size = new Size(ClientSize.Width, 80),
-                Dock = DockStyle.Top,
-                BackColor = Color.SteelBlue,
-            };
-            Controls.Add(header);
-
-            header.Controls.Add(new Label
-            {
-                Text = "Hoş geldin, " + AppText.DisplayName(_session.UserName),
-                Font = new Font("Segoe UI", 14, FontStyle.Bold),
-                ForeColor = Color.White,
-                Location = new Point(20, 25),
-                AutoSize = true,
-            });
-
-            var changePassword = new Button
-            {
-                Name = "btnChangePassword",
-                Text = "Şifre Değiştir",
-                Size = new Size(120, 35),
-                Location = new Point(header.Width - 140, 22),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                BackColor = Color.White,
-                ForeColor = Color.SteelBlue,
-                FlatStyle = FlatStyle.Flat,
-            };
-            changePassword.Click += (_, _) =>
-            {
-                using var form = _forms.Create<ChangePasswordForm>(_session);
-                if (form.ShowDialog(this) == DialogResult.OK)
-                {
-                    Prompts.Inform(ChangePasswordForm.ChangedMessage);
-                }
-            };
-            header.Controls.Add(changePassword);
-        }
-
         private void ShowRentals(IReadOnlyList<RentalDetails> rentals)
         {
             ShownRentals = rentals;
-            var buttons = new List<Button>();
-            var contractButtons = new List<Button>();
-            _scrollPanel.SuspendLayout();
-            try
+            var cards = new List<Control>(rentals.Count);
+            var buttons = new List<Button>(rentals.Count);
+            var contractButtons = new List<Button>(rentals.Count);
+            foreach (var rental in rentals)
             {
-                foreach (Control old in _scrollPanel.Controls.Cast<Control>().ToList())
-                {
-                    old.Dispose();
-                }
-
-                var y = 20 + _scrollPanel.AutoScrollPosition.Y;
-                foreach (var rental in rentals)
-                {
-                    var current = rental;
-                    var (card, button, contract) = RentalCards.Build(current, _rentals.IsUnderway(current), showRenter: false, () => EndAsync(current), () => SaveContractAsync(current));
-                    card.Location = new Point(20, y);
-                    _scrollPanel.Controls.Add(card);
-                    buttons.Add(button);
-                    contractButtons.Add(contract);
-                    y = card.Bottom + 20;
-                }
-            }
-            finally
-            {
-                _scrollPanel.ResumeLayout();
+                var current = rental;
+                var (card, end, contract) = RentalCards.Build(current, _rentals.IsUnderway(current), showRenter: false, () => EndAsync(current), () => SaveContractAsync(current));
+                cards.Add(FormLayout.ScaledFor(card, grdRentals));
+                buttons.Add(end);
+                contractButtons.Add(contract);
             }
 
+            grdRentals.Replace(cards);
             EndButtons = buttons;
             ContractButtons = contractButtons;
+        }
+
+        private void ChangePassword()
+        {
+            using var form = _forms.Create<ChangePasswordForm>(_session);
+            if (form.ShowDialog(this) == DialogResult.OK)
+            {
+                Prompts.Inform(ChangePasswordForm.ChangedMessage);
+            }
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(ProfileForm);
+            lblGreeting.Font = Theme.Fonts.Body;
+            lblGreeting.ForeColor = Theme.Current.TextSecondary;
+            SetHeaderAside(lblGreeting);
+            Content.Controls.Add(FormLayout.Page("rentalsPage", (grdRentals, true)));
+
+            CancelButton = btnClose;
+            SetFooterNote("İptal alış gününden önce, iade alış gününden itibaren yapılır.");
+            SetFooterButtons(btnChangePassword, btnClose);
+            FinishLayout();
         }
     }
 }

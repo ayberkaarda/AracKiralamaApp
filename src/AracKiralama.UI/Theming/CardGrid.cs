@@ -267,3 +267,75 @@ internal sealed class PlateChip : Control
         TextRenderer.DrawText(g, Text, Font, text, ink, Flags | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
     }
 }
+
+/// <summary>
+/// A small pill that states something in words (a rental's stage, a record's state), tinted by its tone so it
+/// reads at a glance, but never by color alone. Under high contrast it is an outline in the window text color.
+/// </summary>
+internal sealed class StatusPill : Control
+{
+    private const TextFormatFlags Flags = TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding;
+
+    private RowTone _tone;
+
+    public StatusPill()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        SetStyle(ControlStyles.Selectable, false);
+        TabStop = false;
+        Font = Theme.Fonts.Caption;
+        Margin = Padding.Empty;
+        AccessibleRole = AccessibleRole.StaticText;
+        AutoSize = true;
+    }
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public RowTone Tone
+    {
+        get => _tone;
+        set
+        {
+            _tone = value;
+            Invalidate();
+        }
+    }
+
+    public override Size GetPreferredSize(Size proposedSize)
+    {
+        var text = TextRenderer.MeasureText(Text, Font, Size.Empty, Flags);
+        return new Size(text.Width + Theme.Px(this, 2 * Spacing.S), text.Height + Theme.Px(this, 4));
+    }
+
+    protected override void OnTextChanged(EventArgs e)
+    {
+        base.OnTextChanged(e);
+        AccessibleName = Text;
+        if (AutoSize)
+        {
+            Size = GetPreferredSize(Size.Empty);
+        }
+
+        Invalidate();
+    }
+
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        if (AutoSize)
+        {
+            Size = GetPreferredSize(Size.Empty);
+        }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        var g = e.Graphics;
+        g.Clear(Painting.ParentBackground(this));
+        var (fill, border, text) = ThemedListBox.PillColors(Theme.Current, selected: false, _tone);
+        var bounds = new RectangleF(0, 0, Width, Height);
+        Painting.FillRounded(g, bounds, Height / 2F, fill, border, Math.Max(1F, Theme.PxF(this, 1)));
+        TextRenderer.DrawText(g, Text, Font, ClientRectangle, text, Flags | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+    }
+}
