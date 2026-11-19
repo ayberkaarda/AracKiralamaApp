@@ -15,11 +15,9 @@ public sealed class BrandingTests
         var resources = typeof(AppAssets).Assembly.GetManifestResourceNames().Order(StringComparer.Ordinal).ToList();
 
         Assert.Equal(
-            ["AracKiralama.UI.Assets.app.ico", "AracKiralama.UI.Assets.background.png", "AracKiralama.UI.Assets.car.png", "AracKiralama.UI.Assets.hero.png", "AracKiralama.UI.Assets.logo-256.png"],
+            ["AracKiralama.UI.Assets.app.ico", "AracKiralama.UI.Assets.logo-256.png"],
             resources.Where(r => r.Contains(".Assets.", StringComparison.Ordinal)));
         Assert.DoesNotContain(resources, r => r.EndsWith(".resources", StringComparison.Ordinal));
-        Assert.Equal(new Size(345, 518), AppAssets.Hero.Size);
-        Assert.Equal(new Size(360, 220), AppAssets.CarPlaceholder.Size);
         Assert.Equal(256, AppAssets.Logo.Width);
         Assert.NotNull(AppAssets.Icon);
     }

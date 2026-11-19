@@ -45,21 +45,10 @@ internal static class DisplayFormat
 internal static class AppAssets
 {
     private static readonly Lazy<Image> LazyLogo = new(() => LoadImage("logo-256.png"));
-    private static readonly Lazy<Image> LazyBackground = new(() => LoadImage("background.png"));
-    private static readonly Lazy<Image> LazyHero = new(() => LoadImage("hero.png"));
-    private static readonly Lazy<Image> LazyCar = new(() => LoadImage("car.png"));
     private static readonly Lazy<Icon> LazyIcon = new(LoadIcon);
 
     /// <summary>The road and pin logo at 256 px (rasterized from assets/logo.svg), for painting it at any size.</summary>
     public static Image Logo => LazyLogo.Value;
-
-    public static Image Background => LazyBackground.Value;
-
-    /// <summary>The picture beside the sign-in fields.</summary>
-    public static Image Hero => LazyHero.Value;
-
-    /// <summary>Shown for a car without a picture or whose picture cannot be loaded.</summary>
-    public static Image CarPlaceholder => LazyCar.Value;
 
     public static Icon Icon => LazyIcon.Value;
 

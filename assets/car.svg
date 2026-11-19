@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 220" width="360" height="220">
-  <!-- Stand-in for a car without a picture: a muted car outline on a light card. -->
-  <rect width="360" height="220" fill="#e6eeec"/>
-  <g transform="translate(80 70)" fill="none" stroke="#8aa5a0" stroke-width="6" stroke-linejoin="round">
-    <path d="M14 50 L28 16 Q34 2 50 0 L140 0 Q154 0 164 12 L182 34 Q192 36 192 48 L192 62 Q192 70 184 70 L12 70 Q6 70 6 62 L6 56 Q6 50 14 50 Z"/>
-    <circle cx="52" cy="72" r="16" fill="#e6eeec"/>
-    <circle cx="148" cy="72" r="16" fill="#e6eeec"/>
-  </g>
-</svg>
