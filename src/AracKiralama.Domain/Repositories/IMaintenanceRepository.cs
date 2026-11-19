@@ -13,14 +13,18 @@ public interface IMaintenanceRepository
 
     /// <summary>
     /// Stores an active record for <paramref name="carId"/>, stamped with the database's clock read after the
-    /// car's lock was granted, unless an active rental or another active record of the car shares a day with its range.
+    /// car's lock was granted, unless its range starts more than <paramref name="maxDaysFromToday"/> days before
+    /// or ends more than that many days after today (the date of that clock reading), or an active rental or
+    /// another active record of the car shares a day with its range.
     /// </summary>
     /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
-    Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, CancellationToken cancellationToken = default);
+    Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, int maxDaysFromToday, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes an active record to <paramref name="changed"/>, only while its stored version is still
-    /// <paramref name="expectedVersion"/> and no active rental or other active record of the car shares a day with the new range.
+    /// <paramref name="expectedVersion"/>, the new range keeps within <paramref name="maxDaysFromToday"/> days
+    /// of today (by the database's clock, read after the car's lock was granted) and no active rental or other
+    /// active record of the car shares a day with it.
     /// </summary>
     /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
     Task<MaintenanceWriteResult> UpdateAsync(
@@ -28,6 +32,7 @@ public interface IMaintenanceRepository
         int recordId,
         int expectedVersion,
         MaintenanceValues changed,
+        int maxDaysFromToday,
         CancellationToken cancellationToken = default);
 
     /// <summary>Cancels an active record, only while its stored version is still <paramref name="expectedVersion"/>.</summary>
@@ -56,6 +61,9 @@ public enum MaintenanceOutcome
 
     /// <summary>Another active maintenance record of the car shares at least one day with the range; nothing was written.</summary>
     OverlapsMaintenance = 5,
+
+    /// <summary>The range is too far before or after today by the database's clock at the write; nothing was written.</summary>
+    DatesOutOfRange = 6,
 }
 
 /// <summary>Outcome of a maintenance write, with the record's id and its version after the write.</summary>

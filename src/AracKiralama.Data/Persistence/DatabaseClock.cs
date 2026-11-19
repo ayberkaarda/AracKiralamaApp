@@ -42,6 +42,10 @@ internal sealed class DatabaseClock(IDbContextFactory<AracDbContext> contextFact
     internal static async Task<DateOnly> ReadTodayAsync(AracDbContext db, TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         var utc = await ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
-        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utc, timeProvider.LocalTimeZone));
+        return LocalDate(utc, timeProvider);
     }
+
+    /// <summary>The calendar day of the UTC time <paramref name="utc"/> in the computer's time zone.</summary>
+    internal static DateOnly LocalDate(DateTime utc, TimeProvider timeProvider) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), timeProvider.LocalTimeZone));
 }

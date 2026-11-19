@@ -32,9 +32,10 @@ public interface IMaintenanceService
 }
 
 /// <remarks>
-/// The day limits are checked against today by the database's clock, and the repository stamps the records
-/// with that clock inside the write, after the car's lock was granted, so computers with wrong clocks neither
-/// accept other ranges nor write other times, and a write that waited for the lock is stamped when it happens.
+/// The day limits are checked against today by the database's clock, first here and again by the repository
+/// with the date it reads inside the write, after the car's lock was granted; it stamps the records with that
+/// same reading. Computers with wrong clocks neither accept other ranges nor write other times, and a write
+/// that waited for the lock across midnight is decided and stamped when it happens.
 /// </remarks>
 internal sealed class MaintenanceService(
     IMaintenanceRepository maintenance,
@@ -61,7 +62,9 @@ internal sealed class MaintenanceService(
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var values = Validate(input, Today(now));
-        var result = await access.WriteAsActorAsync(session, () => maintenance.AddAsync(session.Actor, carId, values, cancellationToken)).ConfigureAwait(false);
+        var result = await access.WriteAsActorAsync(
+            session,
+            () => maintenance.AddAsync(session.Actor, carId, values, RentalPolicy.MaxAllowedDays, cancellationToken)).ConfigureAwait(false);
         Check(result.Outcome);
         return result.RecordId;
     }
@@ -73,7 +76,7 @@ internal sealed class MaintenanceService(
         var values = Validate(input, Today(now));
         var result = await access.WriteAsActorAsync(
             session,
-            () => maintenance.UpdateAsync(session.Actor, recordId, expectedVersion, values, cancellationToken)).ConfigureAwait(false);
+            () => maintenance.UpdateAsync(session.Actor, recordId, expectedVersion, values, RentalPolicy.MaxAllowedDays, cancellationToken)).ConfigureAwait(false);
         Check(result.Outcome);
     }
 
@@ -116,6 +119,7 @@ internal sealed class MaintenanceService(
             MaintenanceOutcome.CarNotFound => new BusinessRuleException(CarNotFound),
             MaintenanceOutcome.OverlapsRental => new BusinessRuleException(OverlapsRental),
             MaintenanceOutcome.OverlapsMaintenance => new BusinessRuleException(OverlapsMaintenance),
+            MaintenanceOutcome.DatesOutOfRange => new BusinessRuleException(MaintenanceFieldsValidator.DatesOutOfRange),
             MaintenanceOutcome.ChangedElsewhere => BusinessRuleException.Stale(ChangedElsewhere),
             _ => BusinessRuleException.Stale(NotFound),
         };

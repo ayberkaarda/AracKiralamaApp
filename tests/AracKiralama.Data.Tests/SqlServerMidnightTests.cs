@@ -1,7 +1,9 @@
 using System.Globalization;
 using AracKiralama.Business;
 using AracKiralama.Business.Services;
+using AracKiralama.Business.Validation;
 using AracKiralama.Data.Persistence;
+using AracKiralama.Domain.Entities;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
@@ -79,6 +81,35 @@ public sealed class SqlServerMidnightTests
         }
 
         Assert.Equal(0, await midnight.Database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
+    }
+
+    /// <summary>
+    /// A maintenance record that starts on the earliest day allowed today (ten years back) is sent just
+    /// before midnight. While it waits for the car's lock, midnight passes: the day is now out of range, so
+    /// the record is refused and nothing is stored.
+    /// </summary>
+    [Fact]
+    public async Task AddMaintenance_MidnightPassesWhileWaitingForTheCarLock_RefusesADayOutOfRangeNow()
+    {
+        await using var midnight = await Midnight.StartAsync();
+        var app = midnight.App;
+        var admin = await SetUpAdminAsync(app);
+        var carId = await AddCarAsync(app, admin, "00 GYR 03");
+        var earliest = midnight.Day.AddDays(-RentalPolicy.MaxAllowedDays);
+        var input = new MaintenanceInput(MaintenanceKind.Maintenance, "Periyodik bakım", earliest, earliest.AddDays(1), null);
+
+        await using (var held = await CarLock.TakeAsync(midnight.Database, carId))
+        {
+            var adding = Task.Run(() => app.GetRequiredService<IMaintenanceService>().AddAsync(admin, carId, input, Ct), Ct);
+            await midnight.Database.WaitForBlockedRequestsAsync(1, Ct);
+            midnight.PassMidnight();
+            await held.ReleaseAsync();
+
+            var error = await Assert.ThrowsAsync<BusinessRuleException>(() => adding);
+            Assert.Equal(MaintenanceFieldsValidator.DatesOutOfRange, error.Message);
+        }
+
+        Assert.Equal(0, await midnight.Database.ScalarAsync("SELECT COUNT(*) FROM dbo.AracBakim", Ct));
     }
 
     /// <summary>
