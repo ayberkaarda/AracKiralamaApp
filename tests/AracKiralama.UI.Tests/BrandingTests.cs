@@ -109,6 +109,23 @@ public sealed class BrandingTests
     [InlineData("fe80::1", false)]
     [InlineData("fc00::1", false)]
     [InlineData("ff02::1", false)]
+    // IPv4 addresses inside IPv6 transition prefixes are judged by the IPv4 address they carry.
+    [InlineData("::ffff:10.0.0.1", false)]
+    [InlineData("::ffff:8.8.8.8", true)]
+    [InlineData("64:ff9b::a00:1", false)]
+    [InlineData("64:ff9b::7f00:1", false)]
+    [InlineData("64:ff9b::a9fe:a9fe", false)]
+    [InlineData("64:ff9b::808:808", true)]
+    [InlineData("64:ff9b:1::a00:1", false)]
+    [InlineData("2002:a00:1::", false)]
+    [InlineData("2002:c0a8:101::1", false)]
+    [InlineData("2002:7f00:1::", false)]
+    [InlineData("2002:808:808::1", true)]
+    [InlineData("::127.0.0.1", false)]
+    [InlineData("::10.0.0.1", false)]
+    [InlineData("::169.254.169.254", false)]
+    [InlineData("::8.8.8.8", true)]
+    [InlineData("::", false)]
     public void IsPublicAddress_RefusesLocalPrivateAndLinkLocalAddresses(string address, bool expected)
     {
         Assert.Equal(expected, CarPictures.IsPublicAddress(IPAddress.Parse(address)));

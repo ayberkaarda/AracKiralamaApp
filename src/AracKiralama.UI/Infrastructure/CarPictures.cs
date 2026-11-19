@@ -78,15 +78,27 @@ internal static class CarPictures
 
     /// <summary>
     /// Whether <paramref name="address"/> is a public unicast address: not this computer (loopback,
-    /// unspecified), not a private, shared or link-local network, not multicast or broadcast.
+    /// unspecified), not a private, shared or link-local network, not multicast or broadcast. An IPv6
+    /// address that carries an IPv4 address (IPv4-mapped, IPv4-compatible, NAT64 64:ff9b::/96 and 6to4
+    /// 2002::/16) is judged by that IPv4 address, since a gateway or the stack connects to it; the
+    /// local-use NAT64 prefix 64:ff9b:1::/48 is never public.
     /// </summary>
     public static bool IsPublicAddress(IPAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);
 
-        if (address.IsIPv4MappedToIPv6)
+        if (address.AddressFamily == AddressFamily.InterNetworkV6)
         {
-            address = address.MapToIPv4();
+            var bytes = address.GetAddressBytes();
+            if (bytes is [0x00, 0x64, 0xFF, 0x9B, 0x00, 0x01, ..])
+            {
+                return false;
+            }
+
+            if (EmbeddedIPv4(bytes) is { } embedded)
+            {
+                address = embedded;
+            }
         }
 
         if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)
@@ -120,6 +132,22 @@ internal static class CarPictures
         }
 
         return false;
+    }
+
+    /// <summary>The IPv4 address inside an IPv6 transition address, or <see langword="null"/>.</summary>
+    private static IPAddress? EmbeddedIPv4(byte[] v6)
+    {
+        var prefixOf96 = v6.AsSpan(0, 12);
+        ReadOnlySpan<byte> mapped = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF];
+        ReadOnlySpan<byte> compatible = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        ReadOnlySpan<byte> nat64 = [0x00, 0x64, 0xFF, 0x9B, 0, 0, 0, 0, 0, 0, 0, 0];
+        if (prefixOf96.SequenceEqual(mapped) || prefixOf96.SequenceEqual(compatible) || prefixOf96.SequenceEqual(nat64))
+        {
+            return new IPAddress(v6.AsSpan(12, 4));
+        }
+
+        // 6to4: 2002:AABB:CCDD::/48 carries AA.BB.CC.DD.
+        return v6[0] == 0x20 && v6[1] == 0x02 ? new IPAddress(v6.AsSpan(2, 4)) : null;
     }
 
     private static async Task LoadIntoAsync(PictureBox pictureBox, Uri uri, int request)
