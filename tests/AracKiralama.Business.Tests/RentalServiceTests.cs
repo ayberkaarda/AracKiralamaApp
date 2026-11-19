@@ -90,7 +90,7 @@ public sealed class RentalServiceTests
         var forged = new RentalQuote(3, 2, 10m, 0.01m, Today.AddDays(1), Today.AddDays(30), false);
         var receipt = await Service().RentAsync(Sessions.User, forged, Ct);
 
-        Assert.Equal(new RentalRequest(3, Sessions.User.UserId, Today.AddDays(1), Today.AddDays(3), 10m, 20m, 0), sent);
+        Assert.Equal(new RentalRequest(3, Sessions.User.UserId, Today.AddDays(1), Today.AddDays(3), 10m, 20m, 0, 60), sent);
         Assert.Equal(11, receipt.RentalId);
         Assert.Equal(20m, receipt.Total);
         Assert.Equal(["rental.created user"], _audit.Entries);
@@ -111,6 +111,8 @@ public sealed class RentalServiceTests
     [InlineData(RentOutcome.NotAvailable, RentalService.NotAvailable)]
     [InlineData(RentOutcome.PriceChanged, RentalService.PriceChanged)]
     [InlineData(RentOutcome.CarNotFound, RentalService.CarNotFound)]
+    [InlineData(RentOutcome.StartInPast, RentalService.StartInPast)]
+    [InlineData(RentOutcome.StartTooFar, "Kiralama en fazla 60 gün sonrası için yapılabilir.")]
     public async Task Rent_RefusedByTheRepository_BecomesARuleMessage(RentOutcome outcome, string message)
     {
         _rentals.Setup(r => r.RentAsync(It.IsAny<RentalRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new RentResult(outcome, 0));

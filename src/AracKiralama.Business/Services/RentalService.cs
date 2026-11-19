@@ -122,13 +122,14 @@ internal sealed class RentalService(
         // The end day and the total are worked out again here; only the car, the start day, the days and
         // the price the customer saw come from the screen, and the repository refuses a price that has
         // changed since and any range that shares a day with an active rental of the car. The first
-        // allowed day is today by the database's clock.
+        // allowed day is today by the database's clock: checked here first, and again by the repository
+        // with the date it reads after it got the car's lock.
         var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
         var current = Quote(quote.CarId, quote.DailyPrice, quote.StartDate, quote.Days, today);
         var result = await access.WriteAsActorAsync(
             session,
             () => rentals.RentAsync(
-                new RentalRequest(current.CarId, session.UserId, current.StartDate, current.EndDate, current.DailyPrice, current.Total, session.SessionVersion),
+                new RentalRequest(current.CarId, session.UserId, current.StartDate, current.EndDate, current.DailyPrice, current.Total, session.SessionVersion, policy.MaxAdvanceDays),
                 cancellationToken)).ConfigureAwait(false);
 
         var auditRole = AuditCodes.Of(role);
@@ -144,6 +145,10 @@ internal sealed class RentalService(
                 throw new BusinessRuleException(NotAvailable);
             case RentOutcome.PriceChanged:
                 throw new BusinessRuleException(PriceChanged);
+            case RentOutcome.StartInPast:
+                throw new BusinessRuleException(StartInPast);
+            case RentOutcome.StartTooFar:
+                throw new BusinessRuleException(RentalQuoteInputValidator.StartTooFar(policy));
             default:
                 throw new BusinessRuleException(CarNotFound);
         }

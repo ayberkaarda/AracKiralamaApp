@@ -25,6 +25,19 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         // The renter's account must still exist with the session it booked from.
         await Actors.RequireAsync(db, new Actor(request.UserId, request.SessionVersion), admin: false, cancellationToken).ConfigureAwait(false);
 
+        // The first allowed day is decided again with the date of the write: a booking sent before
+        // midnight that got the lock after it may no longer start yesterday.
+        var today = await DatabaseClock.ReadTodayAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
+        if (request.StartDate < today)
+        {
+            return new RentResult(RentOutcome.StartInPast, 0);
+        }
+
+        if (request.StartDate.DayNumber - today.DayNumber > request.MaxAdvanceDays)
+        {
+            return new RentResult(RentOutcome.StartTooFar, 0);
+        }
+
         var car = await db.Cars
             .AsNoTracking()
             .Where(c => c.Id == request.CarId)

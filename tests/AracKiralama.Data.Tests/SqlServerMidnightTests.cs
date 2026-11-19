@@ -1,4 +1,5 @@
 using System.Globalization;
+using AracKiralama.Business;
 using AracKiralama.Business.Services;
 using AracKiralama.Data.Persistence;
 using Microsoft.Data.SqlClient;
@@ -49,6 +50,35 @@ public sealed class SqlServerMidnightTests
             Ct,
             ("@id", receipt.RentalId),
             ("@day", midnight.Day.AddDays(1).ToDateTime(TimeOnly.MinValue))));
+    }
+
+    /// <summary>
+    /// A booking from today is sent just before midnight. While it waits for the car's lock, midnight
+    /// passes: its first day is yesterday now, so it is refused and nothing is stored.
+    /// </summary>
+    [Fact]
+    public async Task Rent_MidnightPassesWhileWaitingForTheCarLock_RefusesAStartThatIsPastNow()
+    {
+        await using var midnight = await Midnight.StartAsync();
+        var app = midnight.App;
+        var admin = await SetUpAdminAsync(app);
+        var customer = await RegisterAsync(app, "musteri", 1);
+        var carId = await AddCarAsync(app, admin, "00 GYR 02");
+        var rentals = app.GetRequiredService<IRentalService>();
+        var quote = rentals.Quote(carId, 100m, midnight.Day, 2);
+
+        await using (var held = await CarLock.TakeAsync(midnight.Database, carId))
+        {
+            var booking = Task.Run(() => rentals.RentAsync(customer, quote, Ct), Ct);
+            await midnight.Database.WaitForBlockedRequestsAsync(1, Ct);
+            midnight.PassMidnight();
+            await held.ReleaseAsync();
+
+            var error = await Assert.ThrowsAsync<BusinessRuleException>(() => booking);
+            Assert.Equal(RentalService.StartInPast, error.Message);
+        }
+
+        Assert.Equal(0, await midnight.Database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
     }
 
     /// <summary>

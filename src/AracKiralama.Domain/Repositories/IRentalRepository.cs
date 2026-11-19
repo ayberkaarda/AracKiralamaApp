@@ -7,9 +7,11 @@ public interface IRentalRepository
 {
     /// <summary>
     /// Books a car: under the car's lock, inside the transaction, it checks that the renter's session is
-    /// current, that the car exists, is listed, still costs <see cref="RentalRequest.ExpectedDailyPrice"/>
-    /// a day and that no active rental and no active maintenance record of the car shares a day with
-    /// [<see cref="RentalRequest.StartDate"/>, <see cref="RentalRequest.EndDate"/>), then stores the rental.
+    /// current, that the first day is from today to <see cref="RentalRequest.MaxAdvanceDays"/> days ahead
+    /// (today by the database's clock, read after the lock was granted), that the car exists, is listed,
+    /// still costs <see cref="RentalRequest.ExpectedDailyPrice"/> a day and that no active rental and no
+    /// active maintenance record of the car shares a day with [<see cref="RentalRequest.StartDate"/>,
+    /// <see cref="RentalRequest.EndDate"/>), then stores the rental.
     /// </summary>
     Task<RentResult> RentAsync(RentalRequest request, CancellationToken cancellationToken = default);
 
@@ -51,7 +53,8 @@ public interface IRentalRepository
 
 /// <summary>
 /// A rental to store for account <see cref="UserId"/>, whose session carries <see cref="SessionVersion"/>;
-/// the price was computed from <see cref="ExpectedDailyPrice"/>.
+/// the price was computed from <see cref="ExpectedDailyPrice"/>. It may start at most
+/// <see cref="MaxAdvanceDays"/> days after today (the booking horizon of the settings).
 /// </summary>
 public sealed record RentalRequest(
     int CarId,
@@ -60,7 +63,8 @@ public sealed record RentalRequest(
     DateOnly EndDate,
     decimal ExpectedDailyPrice,
     decimal Price,
-    int SessionVersion);
+    int SessionVersion,
+    int MaxAdvanceDays);
 
 public enum RentOutcome
 {
@@ -78,6 +82,12 @@ public enum RentOutcome
 
     /// <summary>An active maintenance record of the car shares at least one day with the requested range; nothing was written.</summary>
     InMaintenance = 5,
+
+    /// <summary>The first day is before today by the database's clock at the write; nothing was written.</summary>
+    StartInPast = 6,
+
+    /// <summary>The first day is beyond the booking horizon from today by the database's clock at the write; nothing was written.</summary>
+    StartTooFar = 7,
 }
 
 public readonly record struct RentResult(RentOutcome Outcome, int RentalId);
