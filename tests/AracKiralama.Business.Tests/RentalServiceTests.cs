@@ -223,5 +223,5 @@ public sealed class RentalServiceTests
     private static RentalDetails Rental(DateOnly start) =>
         new(9, 3, "Anka", "Kent", "Otomatik", "Benzin", "00 DMO 001", null, 2, "ornek", start, start.AddDays(2), 20m, RentalStatus.Active);
 
-    private RentalService Service() => new(_rentals.Object, new AccessGuard(_users.Object, _audit), _time, _databaseClock ?? new TestDatabaseClock(_time), _policy, _audit);
+    private RentalService Service() => new(_rentals.Object, new AccessGuard(_users.Object, _audit), _time, _databaseClock ?? new TestDatabaseClock(_time), _policy, _audit, TestValidators.Quote(_policy));
 }

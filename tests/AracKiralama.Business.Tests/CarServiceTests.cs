@@ -50,8 +50,8 @@ public sealed class CarServiceTests
         _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.User);
         var guard = new AccessGuard(_users.Object, _audit);
         var cars = Service();
-        var accounts = new AccountService(_users.Object, new PasswordHasher(iterations: 1_000), guard, _audit);
-        var rentals = new RentalService(new Mock<IRentalRepository>(MockBehavior.Strict).Object, guard, _time, new TestDatabaseClock(_time), new RentalPolicy(), _audit);
+        var accounts = new AccountService(_users.Object, new PasswordHasher(iterations: 1_000), guard, _audit, TestValidators.NewAccount, TestValidators.AccountChange);
+        var rentals = new RentalService(new Mock<IRentalRepository>(MockBehavior.Strict).Object, guard, _time, new TestDatabaseClock(_time), new RentalPolicy(), _audit, TestValidators.Quote(new RentalPolicy()));
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => cars.GetAllAsync(Sessions.Admin, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => cars.AddAsync(Sessions.Admin, Valid, Ct));
@@ -219,5 +219,5 @@ public sealed class CarServiceTests
         Assert.Same(hidden, await Service().GetAsync(Sessions.Admin, 3, Ct));
     }
 
-    private CarService Service() => new(_cars.Object, new AccessGuard(_users.Object, _audit), _time, _audit);
+    private CarService Service() => new(_cars.Object, new AccessGuard(_users.Object, _audit), _time, _audit, TestValidators.Car);
 }

@@ -3,6 +3,7 @@ using AracKiralama.Business.Security;
 using AracKiralama.Business.Validation;
 using AracKiralama.Domain.Entities;
 using AracKiralama.Domain.Repositories;
+using FluentValidation;
 
 namespace AracKiralama.Business.Services;
 
@@ -24,7 +25,13 @@ public interface IAccountService
     Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default);
 }
 
-internal sealed class AccountService(IUserRepository users, IPasswordHasher passwordHasher, AccessGuard access, IAuditLog audit) : IAccountService
+internal sealed class AccountService(
+    IUserRepository users,
+    IPasswordHasher passwordHasher,
+    AccessGuard access,
+    IAuditLog audit,
+    IValidator<NewAccountInput> newAccountValidator,
+    IValidator<AccountChangeInput> accountChangeValidator) : IAccountService
 {
     internal const string NotFound = "Kullanıcı bulunamadı.";
     internal const string LastAdmin = "Sistemde en az bir yönetici kalmalıdır; son yöneticinin rolü değiştirilemez.";
@@ -40,14 +47,11 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
     public async Task<int> AddAsync(UserSession session, AccountInput input, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
-        ArgumentNullException.ThrowIfNull(input);
-        if (string.IsNullOrWhiteSpace(input.Password))
-        {
-            throw new BusinessRuleException(AccountRules.AllFieldsRequired);
-        }
 
-        var (name, email, phone) = Validate(input, stored: null);
-        AccountRules.RequireValidPassword(input.Password);
+        // Admins may give any name the rules allow, also the one the sign-up form keeps.
+        var account = NewAccountInput.Create(input);
+        newAccountValidator.ValidateOrThrow(account);
+        var (name, email, phone) = (account.UserName, account.Email, account.Phone is null ? null : InputRules.NormalizePhone(account.Phone));
         await RequireFreeAsync(name, email, phone, null, cancellationToken).ConfigureAwait(false);
 
         try
@@ -55,7 +59,7 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
             var user = new User
             {
                 UserName = name,
-                PasswordHash = passwordHasher.Hash(input.Password),
+                PasswordHash = passwordHasher.Hash(account.Password!),
                 PasswordFormat = PasswordFormat.Pbkdf2,
                 Role = input.Role,
                 Email = email,
@@ -78,13 +82,12 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
 
         var stored = await users.GetSummaryAsync(userId, cancellationToken).ConfigureAwait(false)
             ?? throw new BusinessRuleException(NotFound);
-        var (name, email, phone) = Validate(input, stored);
-        string? newHash = null;
-        if (!string.IsNullOrEmpty(input.Password))
-        {
-            AccountRules.RequireValidPassword(input.Password);
-            newHash = passwordHasher.Hash(input.Password);
-        }
+        var change = AccountChangeInput.Create(input, stored);
+        accountChangeValidator.ValidateOrThrow(change);
+        var name = change.UserName;
+        var email = change.Email;
+        var phone = change.Phone is null || change.KeepsStoredPhone ? change.Phone : InputRules.NormalizePhone(change.Phone);
+        var newHash = string.IsNullOrEmpty(change.Password) ? null : passwordHasher.Hash(change.Password);
 
         await RequireFreeAsync(name, email, phone, userId, cancellationToken).ConfigureAwait(false);
 
@@ -128,45 +131,6 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
                 throw new BusinessRuleException(NotFound);
         }
     }
-
-    /// <summary>
-    /// The account form's values. E-mail and phone may be left empty: accounts of the original
-    /// application may have neither, and the upgrade keeps them empty, so an admin can still change such
-    /// an account (for example set a new password). Every value of a new account follows the rules. An
-    /// existing account (<paramref name="stored"/>) keeps a name, e-mail or phone of the original data
-    /// that the rules would refuse as long as the form sends it unchanged; a changed value follows the
-    /// rules.
-    /// </summary>
-    private static (string Name, string? Email, string? Phone) Validate(AccountInput input, UserSummary? stored)
-    {
-        var name = input.UserName?.Trim();
-        if (string.IsNullOrEmpty(name) || !Enum.IsDefined(input.Role))
-        {
-            throw new BusinessRuleException(AccountRules.AllFieldsRequired);
-        }
-
-        if (Unchanged(name, stored?.UserName) is { } storedName)
-        {
-            name = storedName;
-        }
-        else
-        {
-            // Admins may give any name the rules allow, also the one the sign-up form keeps.
-            AccountRules.RequireValidUserName(name, allowReserved: true);
-        }
-
-        var email = string.IsNullOrWhiteSpace(input.Email)
-            ? null
-            : Unchanged(input.Email, stored?.Email) ?? AccountRules.RequireValidEmail(input.Email);
-        var phone = string.IsNullOrWhiteSpace(input.Phone)
-            ? null
-            : Unchanged(input.Phone, stored?.Phone) ?? AccountRules.RequireValidPhone(input.Phone);
-        return (name, email, phone);
-    }
-
-    /// <summary>The stored value when <paramref name="value"/> is the same text (apart from surrounding spaces), otherwise <see langword="null"/>.</summary>
-    private static string? Unchanged(string value, string? stored) =>
-        stored is not null && string.Equals(value.Trim(), stored.Trim(), StringComparison.Ordinal) ? stored : null;
 
     private async Task RequireFreeAsync(string name, string? email, string? phone, int? exceptUserId, CancellationToken cancellationToken)
     {

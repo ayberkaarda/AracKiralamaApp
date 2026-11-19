@@ -1,7 +1,8 @@
-using System.Globalization;
 using AracKiralama.Business.Auditing;
+using AracKiralama.Business.Validation;
 using AracKiralama.Domain.Entities;
 using AracKiralama.Domain.Repositories;
+using FluentValidation;
 
 namespace AracKiralama.Business.Services;
 
@@ -85,7 +86,8 @@ internal sealed class RentalService(
     TimeProvider timeProvider,
     IDatabaseClock clock,
     RentalPolicy policy,
-    IAuditLog audit) : IRentalService
+    IAuditLog audit,
+    IValidator<RentalQuoteInput> quoteValidator) : IRentalService
 {
     internal const string CarNotFound = "Araç bulunamadı.";
     internal const string NotAvailable = "Bu araç şu anda kiralamaya kapalı.";
@@ -99,44 +101,14 @@ internal sealed class RentalService(
 
     public DateOnly Today => timeProvider.Today();
 
-    internal string DaysInvalid => string.Create(
-        CultureInfo.InvariantCulture,
-        $"Gün sayısı {policy.MinRentalDays} ile {policy.MaxRentalDays} arasında olmalıdır.");
-
-    internal string StartTooFar => string.Create(
-        CultureInfo.InvariantCulture,
-        $"Kiralama en fazla {policy.MaxAdvanceDays} gün sonrası için yapılabilir.");
-
     public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days) =>
         Quote(carId, dailyPrice, startDate, days, timeProvider.Today());
 
     private RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days, DateOnly today)
     {
-        if (days < policy.MinRentalDays || days > policy.MaxRentalDays)
-        {
-            throw new BusinessRuleException(DaysInvalid);
-        }
-
-        if (startDate < today)
-        {
-            throw new BusinessRuleException(StartInPast);
-        }
-
-        if (startDate.DayNumber - today.DayNumber > policy.MaxAdvanceDays)
-        {
-            throw new BusinessRuleException(StartTooFar);
-        }
-
-        if (dailyPrice <= 0m)
-        {
-            throw new BusinessRuleException(CarNotFound);
-        }
+        quoteValidator.ValidateOrThrow(new RentalQuoteInput(days, dailyPrice, startDate, today));
 
         var total = PriceCalculator.Total(days, dailyPrice, policy);
-        if (total > PriceCalculator.MaxAmount)
-        {
-            throw new BusinessRuleException(TotalTooHigh);
-        }
 
         return new RentalQuote(carId, days, dailyPrice, total, startDate, startDate.AddDays(days), PriceCalculator.DiscountApplies(days, policy));
     }

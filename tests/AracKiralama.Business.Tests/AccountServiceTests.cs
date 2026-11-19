@@ -236,5 +236,5 @@ public sealed class AccountServiceTests
         _users.VerifyNoOtherCalls();
     }
 
-    private AccountService Service() => new(_users.Object, _hasher, new AccessGuard(_users.Object, _audit), _audit);
+    private AccountService Service() => new(_users.Object, _hasher, new AccessGuard(_users.Object, _audit), _audit, TestValidators.NewAccount, TestValidators.AccountChange);
 }

@@ -1,6 +1,8 @@
 using AracKiralama.Business.Auditing;
 using AracKiralama.Business.Security;
 using AracKiralama.Business.Services;
+using AracKiralama.Business.Validation;
+using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -28,6 +30,14 @@ public static class BusinessServiceCollectionExtensions
         services.TryAddSingleton(SetupKeyThrottle.Default);
         services.TryAddSingleton(_ => SetupKeyEnvironment.FromProcess());
         services.TryAddSingleton(rentalPolicy);
+        services.AddSingleton<IValidator<SignInInput>, SignInInputValidator>();
+        services.AddSingleton<IValidator<SignUpInput>, SignUpInputValidator>();
+        services.AddSingleton<IValidator<PasswordChangeInput>, PasswordChangeInputValidator>();
+        services.AddSingleton<IValidator<FirstAdminInput>, FirstAdminInputValidator>();
+        services.AddSingleton<IValidator<NewAccountInput>, NewAccountInputValidator>();
+        services.AddSingleton<IValidator<AccountChangeInput>, AccountChangeInputValidator>();
+        services.AddSingleton<IValidator<CarFields>, CarFieldsValidator>();
+        services.AddSingleton<IValidator<RentalQuoteInput>, RentalQuoteInputValidator>();
         services.AddSingleton<SetupKeyGate>();
         services.AddSingleton<AccessGuard>();
         services.AddSingleton<IAuthService, AuthService>();
