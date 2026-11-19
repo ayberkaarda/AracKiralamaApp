@@ -197,7 +197,7 @@ public sealed class OperationsUiTests
         Assert.True(save.Result);
         Assert.Equal(3, form.Selected!.Version);
         Assert.Equal("Başka yönetici", Find<TextBox>(form, "txtDescription").Text);
-        Assert.Contains(NoDialogs.Requested, r => r.Contains("başka biri tarafından değiştirildi", StringComparison.Ordinal));
+        Assert.Contains("başka biri tarafından değiştirildi", form.StatusBar.Text, StringComparison.Ordinal);
     });
 
     /// <summary>A refusal of the input (a typo, days a rental holds) keeps everything the admin typed, for a new and a selected record.</summary>
@@ -251,7 +251,9 @@ public sealed class OperationsUiTests
         reports.Requests[0].SetResult(ControlledReportService.Report(100m));
 
         Assert.Equal(200m, form.ShownReport!.Total.Revenue);
-        Assert.Equal("Toplam: 1 kiralama, 2 gün, 200,00 TL", Find<Label>(form, "lblTotal").Text);
+        Assert.Equal("Toplam: 1 kiralama, 2 gün, 200,00 TL", form.TotalText);
+        Assert.Equal("200,00 TL", Find<Label>(form, "lblTotalRevenue").Text);
+        Assert.Equal(form.ShownReport.Periods.Count, Find<ListBox>(form, "lstPeriods").Items.Count);
         Assert.Equal(form.ShownReport.Note, Find<Label>(form, "lblNote").Text);
         Assert.True(form.ExportCsvAsync().Result);
         var (path, content) = Assert.Single(written);

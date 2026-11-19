@@ -22,7 +22,12 @@ internal enum RowTone
 /// right of the first line. The pill is measured first and keeps its whole text; only the primary line
 /// gives way (with an ellipsis), so a long car or account name never hides the plate or the status.
 /// </summary>
-internal readonly record struct ListRow(string Primary, string? Secondary = null, RowTone Tone = RowTone.Neutral, string? Status = null, RowTone StatusTone = RowTone.Neutral);
+/// <remarks>
+/// <see cref="Value"/> is a figure written at the right of the first line instead of a pill (an amount), and
+/// <see cref="Share"/> (0 to 1) draws a thin bar along the bottom of the row whose length is that share, so a
+/// list of amounts reads as a bar chart with every value written out.
+/// </remarks>
+internal readonly record struct ListRow(string Primary, string? Secondary = null, RowTone Tone = RowTone.Neutral, string? Status = null, RowTone StatusTone = RowTone.Neutral, string? Value = null, double? Share = null);
 
 /// <summary>
 /// A list painted with the theme: one or two lines per row, an optional status pill, hairline dividers, an
@@ -275,7 +280,8 @@ internal sealed class ThemedListBox : ListBox, IThemeAware
         var firstLine = twoLines
             ? new Rectangle(left, e.Bounds.Y + pad, width, strong.Height)
             : new Rectangle(left, e.Bounds.Y, width, e.Bounds.Height);
-        var (primaryBounds, statusBounds) = SplitLine(firstLine, StatusWidth(g, row.Status), Theme.Px(this, Spacing.S));
+        var valueWidth = string.IsNullOrEmpty(row.Value) ? 0 : TextRenderer.MeasureText(g, row.Value, strong, Size.Empty, PillFlags).Width;
+        var (primaryBounds, statusBounds) = SplitLine(firstLine, valueWidth > 0 ? valueWidth : StatusWidth(g, row.Status), Theme.Px(this, Spacing.S));
         if (WrapText)
         {
             var area = new Rectangle(left, e.Bounds.Y + pad, width, Math.Max(0, e.Bounds.Height - (2 * pad)));
@@ -285,9 +291,29 @@ internal sealed class ThemedListBox : ListBox, IThemeAware
         {
             TextRenderer.DrawText(g, row.Primary, twoLines ? strong : Font, primaryBounds, primary, back, LineFlags);
         }
-        if (row.Status is { Length: > 0 } status)
+        if (row.Value is { Length: > 0 } value)
+        {
+            // Measured and drawn with the same flags, so the whole amount always fits its room.
+            TextRenderer.DrawText(g, value, strong, statusBounds, primary, back, PillFlags | TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+        }
+        else if (row.Status is { Length: > 0 } status)
         {
             DrawPill(g, status, statusBounds, selected, row.StatusTone);
+        }
+
+        if (row.Share is { } share && share > 0)
+        {
+            // The bar: the signal color on a quiet track; under high contrast the row's own text color.
+            var height = Math.Max(2, Theme.Px(this, 3));
+            var track = new Rectangle(left, e.Bounds.Bottom - pad + Math.Max(1, (pad - height) / 2) - 1, width, height);
+            if (!p.IsHighContrast)
+            {
+                using var quiet = new SolidBrush(p.Border);
+                g.FillRectangle(quiet, track);
+            }
+
+            using var bar = new SolidBrush(p.IsHighContrast ? primary : p.Warm);
+            g.FillRectangle(bar, track.X, track.Y, Math.Max(height, (int)Math.Round(track.Width * Math.Min(1, share))), track.Height);
         }
 
         if (twoLines)
