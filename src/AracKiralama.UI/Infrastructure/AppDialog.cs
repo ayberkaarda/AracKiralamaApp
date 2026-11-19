@@ -421,7 +421,8 @@ public abstract class AppDialog : Form, IStatusSurface
             {
                 // Labels wrap or end in an ellipsis inside their column, so only their height counts: text that
                 // wraps onto more lines needs a taller window. Inputs and buttons count in both directions.
-                var label = child is Label;
+                // A day cell of the calendar is a label of a fixed size, so its width counts as well.
+                var label = child is Label and not DayCell;
 
                 // Position of the control in the client area of each ancestor; a container of zero size
                 // cuts off everything in it.
