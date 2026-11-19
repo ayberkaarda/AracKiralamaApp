@@ -56,6 +56,7 @@ public static class DataServiceCollectionExtensions
         services.AddSingleton<ICarRepository, CarRepository>();
         services.AddSingleton<IRentalRepository, RentalRepository>();
         services.AddSingleton<IMaintenanceRepository, MaintenanceRepository>();
+        services.AddSingleton<IReportRepository, ReportRepository>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IDatabaseClock, DatabaseClock>();
         return services;
