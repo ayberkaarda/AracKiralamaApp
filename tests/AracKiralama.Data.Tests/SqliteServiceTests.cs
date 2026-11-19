@@ -327,8 +327,8 @@ public sealed class SqliteServiceTests : IAsyncLifetime
             () => cars.AddAsync(asCustomer, new Car { Brand = "A", Model = "B", Year = 2020, Transmission = "Manuel", FuelType = "Benzin", Color = "Gri", Plate = "00 YOK 01", DailyPrice = 1m }, Ct),
             () => cars.UpdateAsync(asCustomer, car, Ct),
             () => cars.DeleteAsync(asCustomer, OtherCarId, Ct),
-            () => rentals.EndAsync(receipt.RentalId, new RentalActor(customer, AsAdmin: true, _customer.SessionVersion), Today, Ct),
-            () => rentals.EndAsync(receipt.RentalId, new RentalActor(999, AsAdmin: false, SessionVersion: 0), Today, Ct),
+            () => rentals.EndAsync(receipt.RentalId, new RentalActor(customer, AsAdmin: true, _customer.SessionVersion), Ct),
+            () => rentals.EndAsync(receipt.RentalId, new RentalActor(999, AsAdmin: false, SessionVersion: 0), Ct),
         ];
 
         foreach (var operation in refused)

@@ -14,13 +14,15 @@ public interface IRentalRepository
     Task<RentResult> RentAsync(RentalRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Ends an active rental on <paramref name="today"/>: one that has not started yet is cancelled,
-    /// one that has is marked returned on that day. Unless <paramref name="actor"/> acts as an admin, a
-    /// rental of another account is treated as missing. The actor's account must exist and, acting as
-    /// an admin, still be an admin at the write.
+    /// Ends an active rental today: one that has not started yet is cancelled, one that has is marked
+    /// returned on that day. Today is the database clock's date, read inside the transaction after the
+    /// car's lock was granted, so the time spent waiting for the lock cannot leave the decision with
+    /// yesterday's date. Unless <paramref name="actor"/> acts as an admin, a rental of another account is
+    /// treated as missing. The actor's account must exist and, acting as an admin, still be an admin at
+    /// the write.
     /// </summary>
     /// <exception cref="ActorRevokedException">The actor's account is gone or no admin (any more); nothing was written.</exception>
-    Task<EndRentalResult> EndAsync(int rentalId, RentalActor actor, DateOnly today, CancellationToken cancellationToken = default);
+    Task<EndRentalResult> EndAsync(int rentalId, RentalActor actor, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Active rentals with car and account, ordered by start day and id; only those of

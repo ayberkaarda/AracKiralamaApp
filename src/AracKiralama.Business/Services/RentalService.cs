@@ -79,6 +79,7 @@ public interface IRentalService
 /// only prepare what a screen shows. The operations decide with today's date by the database's clock:
 /// a booking that starts before it is refused, and it decides whether ending a rental cancels or
 /// returns it, so a computer whose clock is wrong cannot book past days or cancel a rental under way.
+/// Ending a rental reads that date inside the write, after the car's lock was granted.
 /// </remarks>
 internal sealed class RentalService(
     IRentalRepository rentals,
@@ -179,11 +180,11 @@ internal sealed class RentalService(
         ArgumentNullException.ThrowIfNull(session);
 
         // The owner filter comes from the role stored now: a demoted admin ends only their own rentals.
-        // The repository checks the role again inside the write.
+        // The repository checks the role again inside the write and decides between a cancellation and
+        // a return with today's date by the database's clock, read after it got the car's lock.
         var owner = await access.OwnerFilterAsync(session, cancellationToken).ConfigureAwait(false);
         var actor = new RentalActor(session.UserId, AsAdmin: owner is null, session.SessionVersion);
-        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
-        var result = await access.WriteAsActorAsync(session, () => rentals.EndAsync(rentalId, actor, today, cancellationToken)).ConfigureAwait(false);
+        var result = await access.WriteAsActorAsync(session, () => rentals.EndAsync(rentalId, actor, cancellationToken)).ConfigureAwait(false);
         if (result.Outcome == EndRentalOutcome.NotFound)
         {
             throw new BusinessRuleException(RentalNotFound);
