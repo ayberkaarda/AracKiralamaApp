@@ -47,30 +47,38 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ **Araçlar** ("Yönetim Paneli"): marka, model, yıl, vites tipi, yakıt tipi, kilometre, renk, plaka, günlük ücret
   ve resim linkiyle ("Resim Linki") araç ekleme ("Araç Ekle"), güncelleme ("Aracı Güncelle") ve silme ("Aracı Sil").
   Her geçersiz alan kendi kontrolünün yanında işaretlenir. Plakalar benzersizdir. Kiralama geçmişi olan araç
-  silinemez; bunun yerine "Kiralamaya açık" seçeneği aracı müşterilerden gizler.
+  silinemez; bunun yerine "Kiralamaya açık" seçeneği aracı müşterilerden gizler. Başka bir yöneticinin
+  değişikliğinden (yeni ücret, kiralamaya kapatma) önce açılmış bir formdan yapılan değişiklik reddedilir ve araç
+  yeniden yüklenir.
 - ✅ **Hesaplar** ("Kullanıcı Yönetim Paneli"): rol, e-posta ve telefonla (listede maskeli) hesap ekleme,
   güncelleme ve silme; yeni şifre eskisinin yerine geçer ve kilidi kaldırır. Yöneticiler ve kiralaması olan hesaplar
-  silinemez, son yönetici yönetici rolünü korur.
+  silinemez, son yönetici yönetici rolünü korur. Hesabın rolü veya şifresi başka bir yerde değişmeden önce açılmış bir
+  formdan yapılan değişiklik reddedilir ve hesap yeniden yüklenir; böylece eski bir form, başka bir yöneticinin az önce
+  aldığı rolü geri veremez. Kendi rolünü veya şifresini değiştiren yöneticinin oturumu kapatılır.
 - ✅ **Kiralamalar** ("Kiralanan Araçlar"): tüm aktif kiralamalar; marka, vites tipi ve yakıt tipine göre
   filtrelenebilir.
 
 ### Takvim, bakım, raporlar ve sözleşmeler
 
 - ✅ **Müsaitlik takvimi** ("Müsaitlik Takvimi"): bir aracın bir ayı; her gün veritabanının bugününe göre "Boş",
-  "Dolu", "Bakım" (bakım veya hasar onarımı) ya da "Geçmiş" olarak işaretlenir. Müşteriler kiralamaya açık araçlar
-  için kiralama ekranından, yöneticiler her araç için yönetim panelinden açar. Durum her hücrede yazılıdır; renkler
-  yalnızca yardımcıdır, yüksek karşıtlıkta sistem renkleri korunur.
+  "Dolu", "Bakım" (bakım veya hasar onarımı) ya da "Geçmiş" olarak işaretlenir; ilk gösterilen ay da bu bugüne göre
+  seçilir. Müşteriler kiralamaya açık araçlar için kiralama ekranından açar ve bugünden önceki her günü "Geçmiş"
+  görür; yöneticiler her araç için yönetim panelinden açar ve kiralama ile bakımın geçmiş günlerini de görür. Durum
+  her hücrede yazılıdır; renkler yalnızca yardımcıdır, yüksek karşıtlıkta sistem renkleri korunur. Ay düğmelerine hızlı
+  tıklamalar toplanır; en son istenen ay gösterilir.
 - ✅ **Bakım ve hasar kayıtları** ("Bakım / Hasar Kayıtları", yönetici): planlı bakım veya hasar onarımı; günleri,
-  açıklaması ve isteğe bağlı maliyetiyle. Araç bu günlerde kiralanamaz ve bir kayıt aktif bir kiralamanın günlerini
-  alamaz. Yanlış girilen kayıt silinmez, iptal edilir. Başka bir yöneticinin değişikliğinden önce açılmış bir formun
-  kaydı reddedilir ve kayıt yeniden yüklenir; zamanlar veritabanının saatiyle damgalanır.
+  açıklaması ve isteğe bağlı maliyetiyle. Araç bu günlerde kiralanamaz ve bir kayıt aktif bir kiralamanın veya aracın
+  başka bir aktif kaydının günlerini alamaz. Yanlış girilen kayıt silinmez, iptal edilir. Başka bir yöneticinin
+  değişikliğinden önce açılmış bir formun kaydı reddedilir ve kayıt yeniden yüklenir; başka her retten sonra
+  yöneticinin yazdıkları formda kalır. Zamanlar, yazma anında veritabanının saatiyle damgalanır.
 - ✅ **Gelir raporu** ("Gelir Raporu", yönetici): iki gün arasındaki kiralamalar aylara veya günlere ve araçlara
   göre; bugüne kadar teslim alınmış her kiralama (iade edilmiş veya sürmekte olan), rezervasyonda belirlenen ücretiyle
-  alış gününün dönemine yazılır. Henüz başlamamış kiralamalar hâlâ ücretsiz iptal edilebildiği için sayılmaz, böylece
-  geçmiş bir rapor sonradan değişmez; iptal edilen kiralamalar gelir getirmez. Aralığın yalnızca bir kısmını kapsayan
-  ay kendi günleriyle adlandırılır ve gün sayısı rezervasyondaki gündür. Ekran ve CSV bunu bir notla belirtir. "CSV Olarak Kaydet" ekrandaki raporu ";" ayraçlı UTF-8 CSV olarak kaydeder; her
-  alan tırnak içindedir ve `=`, `+`, `-`, `@` ya da bir kontrol karakteriyle başlayan değer formül olarak değil metin
-  olarak yazılır.
+  alış gününün dönemine yazılır; ekran bu aydan veritabanının bugününe kadarki aralıkla açılır. Henüz başlamamış
+  kiralamalar hâlâ ücretsiz iptal edilebildiği için sayılmaz, böylece geçmiş bir rapor sonradan değişmez; iptal edilen
+  kiralamalar gelir getirmez. Aralığın yalnızca bir kısmını kapsayan ay kendi günleriyle adlandırılır ve gün sayısı
+  rezervasyondaki gündür. Ekran ve CSV bunu bir notla belirtir. "CSV Olarak Kaydet" ekrandaki raporu ";" ayraçlı
+  UTF-8 CSV olarak kaydeder; her alan tırnak içindedir ve `=`, `+`, `-`, `@` ya da bir kontrol karakteriyle başlayan
+  değer formül olarak değil metin olarak yazılır.
 - ✅ **Kiralama sözleşmesi** (her kiralama kartında "Sözleşme"): kiralamayı, aracı ve kiracının e-posta adresini ve
   telefonunu gösteren yazdırılabilir bir HTML sayfası. Her değer HTML olarak kodlanır; sayfa betik çalıştırmaz, hiçbir
   şey yüklemez ve Content-Security-Policy ile yalnızca kendi stil bloğuna izin verir; kullanıcı adı, hesap numarası,
@@ -92,8 +100,9 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   oturumlarını (örneğin çalınan şifreyle başka bir yerde açılmış olanı) kapatır; şifreyi değiştiren pencere çalışmaya
   devam eder.
 - ✅ Bir aracın kiralama, iptal, iade, araç değişikliği ve bakım yazmaları aracın kilidini bekler (en fazla 30 saniye,
-  her zaman komut zaman aşımından kısa); meşgul bir kilit hiçbir şey yazmadan "İşlem meşgul ... tekrar deneyin" ile
-  biter.
+  her zaman komut zaman aşımından kısa) ve kilidi, işlemi yapan hesabı denetlemeden önce, hepsi aynı sırayla alır;
+  meşgul bir kilit de, SQL Server'ın kilitlenme (deadlock) kurbanı seçtiği bir transaction da hiçbir şey yazmadan
+  "İşlem meşgul ... tekrar deneyin" ile biter.
 - ✅ Türkçe mesajlı merkezi FluentValidation doğrulayıcıları (boş alanlar, e-posta biçimi, şifre kuralı, araç
   alanları, kiralama günleri ve tarihleri); yazma düğmeleri bir işlem sürerken tekrarlanan tıklamaları yok sayar.
 - ✅ Kişisel veri içermeyen, anonim denetim kodlu günlük log dosyaları.
@@ -274,9 +283,10 @@ dotnet ef migrations add <Ad> --project src/AracKiralama.Data --output-dir Persi
 Tasarım zamanı fabrikası `ARAC_CONNECTION` değişkenini okur, yoksa yerel SQL Server Express örneğini kullanır.
 Migration'ları veritabanı sahibinin bağlantısıyla uygulayın; uygulamanın kısıtlı oturumunun DDL yetkisi yoktur.
 
-İlk migration'dan sonrakiler `AddSessionVersion` (hesapların oturum sürümü, `OturumSurumu`) ve `AddMaintenanceLog`'dur
-(bakım ve hasar kayıtlarının `AracBakim` tablosu). Bunları uyguladıktan sonra uygulamanın oturumunun yeni tabloyu
-kullanabilmesi için `docs/grant-app-login.sql` betiğini yeniden çalıştırın.
+İlk migration'dan sonrakiler `AddSessionVersion` (hesapların oturum sürümü, `OturumSurumu`), `AddMaintenanceLog`
+(bakım ve hasar kayıtlarının `AracBakim` tablosu) ve `AddCarVersion`'dır (araçların sürümü, `Surum`; eski bir formdan
+gelen değişikliği reddeder). Bunları uyguladıktan sonra uygulamanın oturumunun yeni tabloyu kullanabilmesi için
+`docs/grant-app-login.sql` betiğini yeniden çalıştırın; yeni sütunlar mevcut tablo yetkileriyle kapsanır.
 
 **Eski uygulamanın veritabanını yükseltme:** `dotnet ef database update` bu veritabanını **yükseltmez**. Böyle bir
 veritabanında `Kullanicilar`, `Araclar` ve `Kiralama` tabloları vardır ama migration geçmişi yoktur; EF Core tabloları

@@ -45,28 +45,34 @@ layers; database access uses EF Core, and the database is created, migrated or u
 - ✅ **Cars** ("Yönetim Paneli", Admin Panel): add ("Araç Ekle"), change ("Aracı Güncelle") and delete ("Aracı Sil")
   cars with brand, model, year, gearbox, fuel type, mileage, colour, plate, daily price and picture link ("Resim
   Linki"). Every invalid field is marked next to its control. Plates are unique. A car with rental history cannot be
-  deleted; "Kiralamaya açık" (Open for rental) hides it from customers instead.
+  deleted; "Kiralamaya açık" (Open for rental) hides it from customers instead. A change from a form opened before
+  another admin's change (a new price, the car taken off the list) is refused and the car is loaded again.
 - ✅ **Accounts** ("Kullanıcı Yönetim Paneli", User Management Panel): add, change and delete accounts with role,
   e-mail and phone (masked in the list); a new password replaces the old one and lifts a lock. Admins and accounts
-  with rentals cannot be deleted, and the last admin keeps the admin role.
+  with rentals cannot be deleted, and the last admin keeps the admin role. A change from a form opened before the
+  account's role or password changed elsewhere is refused and the account is loaded again, so a stale form cannot give
+  back a role another admin just removed. An admin who changes their own role or password is signed out.
 - ✅ **Rentals** ("Kiralanan Araçlar", Rented Cars): every active rental, filterable by brand, gearbox and fuel type.
 
 ### Calendar, maintenance, reports and contracts
 
 - ✅ **Availability calendar** ("Müsaitlik Takvimi"): a month of one car, every day marked "Boş" (free), "Dolu"
-  (booked), "Bakım" (maintenance or damage repair) or "Geçmiş" (past), decided with the database's today. Customers
-  open it from the rental screen for listed cars, admins from the admin panel for any car. The state is written in
-  every cell, so the colours only help; under high contrast the system colours stay.
+  (booked), "Bakım" (maintenance or damage repair) or "Geçmiş" (past), decided with the database's today, which also
+  chooses the first month shown. Customers open it from the rental screen for listed cars and see every day before
+  today as past; admins open it from the admin panel for any car and also see the past days of rentals and
+  maintenance. The state is written in every cell, so the colours only help; under high contrast the system colours
+  stay. Quick clicks on the month buttons add up; the latest month asked for is shown.
 - ✅ **Maintenance and damage log** ("Bakım / Hasar Kayıtları", admin): planned maintenance or a damage repair with
   its days, description and optional cost. The car cannot be booked on those days, and a record cannot take days of
-  an active rental. A record entered by mistake is cancelled, never deleted. A save from a form opened before another
-  admin's change is refused and the record is loaded again; times are stamped with the database's clock.
+  an active rental or of another active record of the car. A record entered by mistake is cancelled, never deleted. A
+  save from a form opened before another admin's change is refused and the record is loaded again; any other refusal
+  keeps what the admin typed. Times are stamped with the database's clock when the write happens.
 - ✅ **Revenue report** ("Gelir Raporu", admin): rentals by month or day and by car between two days, with the
-  agreed price of every rental picked up by today (returned or under way) in the period of its pick-up day. Rentals
-  that have not started yet can still be cancelled without charge and are not counted, so a past report does not
-  change later; cancelled rentals earn nothing. A month the range covers only in part names its days, and the days
-  are the booked days. The screen and the CSV state this in a note.
-  "CSV Olarak Kaydet" saves the report on the screen as UTF-8 CSV with ";" separators; every field is quoted and a
+  agreed price of every rental picked up by today (returned or under way) in the period of its pick-up day; the
+  screen starts with this month up to the database's today. Rentals that have not started yet can still be cancelled
+  without charge and are not counted, so a past report does not change later; cancelled rentals earn nothing. A month
+  the range covers only in part names its days, and the days are the booked days. The screen and the CSV state this
+  in a note. "CSV Olarak Kaydet" saves the report on the screen as UTF-8 CSV with ";" separators; every field is quoted and a
   value starting with `=`, `+`, `-`, `@` or a control character is written as text, never as a formula.
 - ✅ **Rental contract** ("Sözleşme" on every rental card): a printable HTML page with the rental, the car and the
   renter's e-mail address and phone. Every value is HTML encoded, the page runs no script, loads nothing and allows
@@ -89,8 +95,9 @@ layers; database access uses EF Core, and the database is created, migrated or u
   version, the role and the account inside its own statement or transaction. "Şifre Değiştir" ends the account's
   other sessions, for example one opened elsewhere with a stolen password; the window that changed it keeps working.
 - ✅ Bookings, cancellations, returns, car changes and maintenance writes of one car wait for the car's lock (30
-  seconds at most, always shorter than the command timeout); a busy lock ends with "İşlem meşgul ... tekrar deneyin"
-  and nothing written.
+  seconds at most, always shorter than the command timeout) and take it before they check the acting account, all in
+  the same order; a busy lock, and a transaction SQL Server ends as a deadlock victim, end with "İşlem meşgul ... tekrar
+  deneyin" and nothing written.
 - ✅ Central FluentValidation validators with Turkish messages (empty fields, e-mail format, password policy, car
   fields, rental days and dates); write buttons ignore repeated clicks while an operation is pending.
 - ✅ Daily log files without personal data, with anonymous audit codes.
@@ -270,9 +277,10 @@ dotnet ef migrations add <Name> --project src/AracKiralama.Data --output-dir Per
 The design-time factory reads `ARAC_CONNECTION` and otherwise uses a local SQL Server Express instance. Apply
 migrations with the database owner's connection; the application's restricted login has no DDL rights.
 
-The migrations after the first one are `AddSessionVersion` (the accounts' session version, `OturumSurumu`) and
-`AddMaintenanceLog` (the `AracBakim` table of the maintenance and damage log). After applying them run
-`docs/grant-app-login.sql` again, so the application's login can use the new table.
+The migrations after the first one are `AddSessionVersion` (the accounts' session version, `OturumSurumu`),
+`AddMaintenanceLog` (the `AracBakim` table of the maintenance and damage log) and `AddCarVersion` (the cars' version,
+`Surum`, which refuses a change from a stale form). After applying them run `docs/grant-app-login.sql` again, so the
+application's login can use the new table; new columns are covered by the existing table rights.
 
 **Upgrading the original application's database:** `dotnet ef database update` does **not** upgrade it. Such a
 database has the tables `Kullanicilar`, `Araclar` and `Kiralama` but no migrations history, so EF Core would try to
