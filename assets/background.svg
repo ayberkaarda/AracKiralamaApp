@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <!-- Light backdrop of the screens: a pale grey-green wash with a soft light from the top left and faint road lines along the bottom. -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f4f7f6"/>
+      <stop offset="1" stop-color="#dfe8e6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.15" cy="0.1" r="0.7">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dash" x="0" y="0" width="160" height="12" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="90" height="12" rx="6" fill="#c9d6d3"/>
+    </pattern>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#base)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <rect x="0" y="1030" width="1920" height="12" fill="url(#dash)" opacity="0.7"/>
+</svg>
