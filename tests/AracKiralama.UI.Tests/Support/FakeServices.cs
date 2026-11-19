@@ -130,7 +130,11 @@ internal sealed class ControlledRentalService : IRentalService
 
     public RentalPolicy Policy { get; } = new() { MinRentalDays = 1, MaxRentalDays = 30, MaxAdvanceDays = 60 };
 
-    public DateOnly Today { get; } = new(2026, 3, 2);
+    /// <summary>Today by the database's clock, as the booking screen asks for it.</summary>
+    public DateOnly DatabaseToday { get; set; } = new(2026, 3, 2);
+
+    /// <summary>The day the last quote was checked against.</summary>
+    public DateOnly? QuotedToday { get; private set; }
 
     public List<RentalDetails> Rentals { get; } = [Rental(9), Rental(10)];
 
@@ -145,8 +149,13 @@ internal sealed class ControlledRentalService : IRentalService
     public static RentalDetails Rental(int id) =>
         new(id, 1, "Anka", "Kent", "Otomatik", "Benzin", "00 DMO 001", null, 2, "ornek", new DateOnly(2026, 3, 4), new DateOnly(2026, 3, 7), 2551.5m, RentalStatus.Active);
 
-    public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days) =>
-        new(carId, days, dailyPrice, dailyPrice * days, startDate, startDate.AddDays(days), false);
+    public Task<DateOnly> GetTodayAsync(UserSession session, CancellationToken cancellationToken = default) => Task.FromResult(DatabaseToday);
+
+    public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days, DateOnly today)
+    {
+        QuotedToday = today;
+        return new(carId, days, dailyPrice, dailyPrice * days, startDate, startDate.AddDays(days), false);
+    }
 
     public Task<RentalReceipt> RentAsync(UserSession session, RentalQuote quote, CancellationToken cancellationToken = default)
     {
@@ -165,7 +174,7 @@ internal sealed class ControlledRentalService : IRentalService
     public Task<IReadOnlyList<RentalDetails>> GetActiveRentalsAsync(UserSession session, CarFilter filter, CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<RentalDetails>>([.. Rentals]);
 
-    public bool IsUnderway(RentalDetails rental) => Today >= rental.StartDate;
+    public bool IsUnderway(RentalDetails rental) => DatabaseToday >= rental.StartDate;
 
     public Task<RentalEnding> EndAsync(UserSession session, int rentalId, CancellationToken cancellationToken = default)
     {

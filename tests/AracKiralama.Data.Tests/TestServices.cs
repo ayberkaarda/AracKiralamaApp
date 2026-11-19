@@ -81,7 +81,8 @@ internal static class TestServices
         var ct = TestContext.Current.CancellationToken;
         var car = await provider.GetRequiredService<ICarService>().GetAsync(session, carId, ct);
         var rentals = provider.GetRequiredService<IRentalService>();
-        return await rentals.RentAsync(session, rentals.Quote(carId, car.DailyPrice, rentals.Today.AddDays(startOffset), days), ct);
+        var today = await rentals.GetTodayAsync(session, ct);
+        return await rentals.RentAsync(session, rentals.Quote(carId, car.DailyPrice, today.AddDays(startOffset), days, today), ct);
     }
 
     /// <summary>

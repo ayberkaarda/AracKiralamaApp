@@ -152,6 +152,23 @@ public sealed class ExclusiveWriteTests
         Assert.Equal(new DateTime(2026, 3, 2), Find<DateTimePicker>(form, "dtpStart").MinDate);
     });
 
+    /// <summary>
+    /// The pick-up day's limits, the day the screen starts with and the quotes follow today by the
+    /// database's clock, whatever the computer's clock says.
+    /// </summary>
+    [Fact]
+    public void Rent_LimitsAndQuotesFollowTheDatabasesToday() => Run(() =>
+    {
+        var rentals = new ControlledRentalService { DatabaseToday = new DateOnly(2026, 4, 20) };
+        using var form = new RentalForm(new ControlledCarService(), rentals, new NoFormsFactory(), Sessions.User, 1) { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadCarAsync().IsCompletedSuccessfully);
+
+        var picker = Find<DateTimePicker>(form, "dtpStart");
+        Assert.Equal((new DateTime(2026, 4, 20), new DateTime(2026, 6, 19), new DateTime(2026, 4, 20)), (picker.MinDate, picker.MaxDate, picker.Value.Date));
+        _ = form.RentAsync();
+        Assert.Equal((new DateOnly(2026, 4, 20), (DateOnly?)new DateOnly(2026, 4, 20)), (rentals.LastQuote!.StartDate, rentals.QuotedToday));
+    });
+
     [Fact]
     public void EndRental_EveryEndButtonStaysDisabledUntilTheEndFinishes() => Run(() =>
     {

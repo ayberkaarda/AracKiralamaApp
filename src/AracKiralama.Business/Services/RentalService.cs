@@ -36,17 +36,17 @@ public interface IRentalService
     RentalPolicy Policy { get; }
 
     /// <summary>
-    /// Today's date by this computer's clock, for the screens. A booking itself is checked against
-    /// today by the database's clock.
+    /// Today's date by the database's clock (in this computer's time zone), for the booking screen's
+    /// limits and quotes: a computer whose clock is wrong offers the same days as every other one.
     /// </summary>
-    DateOnly Today { get; }
+    Task<DateOnly> GetTodayAsync(UserSession session, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Price and days of renting <paramref name="days"/> days from <paramref name="startDate"/> at the
-    /// given daily price. Refuses a start in the past or beyond the booking horizon and a number of days
-    /// outside the settings.
+    /// given daily price. Refuses a start before <paramref name="today"/> (from <see cref="GetTodayAsync"/>)
+    /// or beyond the booking horizon from it, and a number of days outside the settings.
     /// </summary>
-    RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days);
+    RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days, DateOnly today);
 
     /// <summary>
     /// Books a car for the signed-in account. Refused when an active rental of the car shares a day with
@@ -75,8 +75,9 @@ public interface IRentalService
 }
 
 /// <remarks>
-/// <see cref="Today"/>, <see cref="Quote"/> and <see cref="IsUnderway"/> use this computer's clock and
-/// only prepare what a screen shows. The operations decide with today's date by the database's clock:
+/// <see cref="Quote"/> checks against the day the screen got from <see cref="GetTodayAsync"/> and
+/// <see cref="IsUnderway"/> uses this computer's clock; both only prepare what a screen shows. The
+/// operations decide with today's date by the database's clock:
 /// a booking that starts before it is refused, and it decides whether ending a rental cancels or
 /// returns it, so a computer whose clock is wrong cannot book past days or cancel a rental under way.
 /// Ending a rental reads that date inside the write, after the car's lock was granted.
@@ -100,12 +101,13 @@ internal sealed class RentalService(
 
     public RentalPolicy Policy => policy;
 
-    public DateOnly Today => timeProvider.Today();
+    public async Task<DateOnly> GetTodayAsync(UserSession session, CancellationToken cancellationToken = default)
+    {
+        await access.RequireActiveAsync(session, cancellationToken).ConfigureAwait(false);
+        return await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+    }
 
-    public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days) =>
-        Quote(carId, dailyPrice, startDate, days, timeProvider.Today());
-
-    private RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days, DateOnly today)
+    public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days, DateOnly today)
     {
         quoteValidator.ValidateOrThrow(new RentalQuoteInput(days, dailyPrice, startDate, today));
 

@@ -67,7 +67,7 @@ public sealed class SqlServerMidnightTests
         var customer = await RegisterAsync(app, "musteri", 1);
         var carId = await AddCarAsync(app, admin, "00 GYR 02");
         var rentals = app.GetRequiredService<IRentalService>();
-        var quote = rentals.Quote(carId, 100m, midnight.Day, 2);
+        var quote = rentals.Quote(carId, 100m, midnight.Day, 2, midnight.Day);
 
         await using (var held = await CarLock.TakeAsync(midnight.Database, carId))
         {

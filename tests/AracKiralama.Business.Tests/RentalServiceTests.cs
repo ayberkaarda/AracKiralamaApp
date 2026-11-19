@@ -29,7 +29,7 @@ public sealed class RentalServiceTests
     [Fact]
     public void Quote_IsTheDailyPriceTimesTheDaysFromTheStartDay()
     {
-        var quote = Service().Quote(3, 850.5m, Today.AddDays(2), 4);
+        var quote = Service().Quote(3, 850.5m, Today.AddDays(2), 4, Today);
 
         Assert.Equal(3402m, quote.Total);
         Assert.Equal(Today.AddDays(2), quote.StartDate);
@@ -43,7 +43,7 @@ public sealed class RentalServiceTests
     [InlineData(31)]
     public void Quote_DaysOutsideTheSettings_AreRefused(int days)
     {
-        var error = Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 12.5m, Today, days));
+        var error = Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 12.5m, Today, days, Today));
 
         Assert.Equal("Gün sayısı 1 ile 30 arasında olmalıdır.", error.Message);
     }
@@ -53,14 +53,14 @@ public sealed class RentalServiceTests
     {
         _policy = new RentalPolicy { MinRentalDays = 3, MaxRentalDays = 30 };
 
-        Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 100m, Today, 2));
-        Assert.Equal(300m, Service().Quote(3, 100m, Today, 3).Total);
+        Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 100m, Today, 2, Today));
+        Assert.Equal(300m, Service().Quote(3, 100m, Today, 3, Today).Total);
     }
 
     [Fact]
     public void Quote_StartInThePast_IsRefused()
     {
-        var error = Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 100m, Today.AddDays(-1), 2));
+        var error = Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 100m, Today.AddDays(-1), 2, Today));
 
         Assert.Equal(RentalService.StartInPast, error.Message);
     }
@@ -68,14 +68,14 @@ public sealed class RentalServiceTests
     [Fact]
     public void Quote_StartBeyondTheBookingHorizon_IsRefused()
     {
-        Assert.Equal(Today.AddDays(60), Service().Quote(3, 100m, Today.AddDays(60), 1).StartDate);
-        Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 100m, Today.AddDays(61), 1));
+        Assert.Equal(Today.AddDays(60), Service().Quote(3, 100m, Today.AddDays(60), 1, Today).StartDate);
+        Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 100m, Today.AddDays(61), 1, Today));
     }
 
     [Fact]
     public void Quote_TotalBeyondTheMoneyColumn_IsRefused()
     {
-        Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 99_999_999m, Today, 2));
+        Assert.Throws<BusinessRuleException>(() => Service().Quote(3, 99_999_999m, Today, 2, Today));
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class RentalServiceTests
     {
         _rentals.Setup(r => r.RentAsync(It.IsAny<RentalRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(new RentResult(outcome, 0));
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().RentAsync(Sessions.User, Service().Quote(3, 10m, Today, 1), Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().RentAsync(Sessions.User, Service().Quote(3, 10m, Today, 1, Today), Ct));
 
         Assert.Equal(message, error.Message);
         Assert.Equal(outcome == RentOutcome.Overlaps ? ["rental.overlap_refused user"] : [], _audit.Entries);
@@ -180,7 +180,7 @@ public sealed class RentalServiceTests
     {
         _databaseClock = new TestDatabaseClock(new FakeTimeProvider(new DateTimeOffset(2026, 3, 4, 10, 0, 0, TimeSpan.Zero)));
         var service = Service();
-        var quote = service.Quote(3, 10m, Today.AddDays(1), 2);
+        var quote = service.Quote(3, 10m, Today.AddDays(1), 2, Today);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => service.RentAsync(Sessions.User, quote, Ct));
         Assert.Equal(RentalService.StartInPast, error.Message);
@@ -188,6 +188,15 @@ public sealed class RentalServiceTests
         _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false, SessionVersion: 0), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.Returned));
         Assert.Equal(RentalEnding.Returned, await service.EndAsync(Sessions.User, 9, Ct));
+    }
+
+    /// <summary>The booking screen's today is the database's date, here two days after the computer's.</summary>
+    [Fact]
+    public async Task Today_ForTheBookingScreen_IsTheDatabasesDate()
+    {
+        _databaseClock = new TestDatabaseClock(new FakeTimeProvider(new DateTimeOffset(2026, 3, 4, 10, 0, 0, TimeSpan.Zero)));
+
+        Assert.Equal(Today.AddDays(2), await Service().GetTodayAsync(Sessions.User, Ct));
     }
 
     [Fact]

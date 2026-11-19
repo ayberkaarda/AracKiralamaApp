@@ -108,7 +108,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     public async Task Rent_PriceChangedAfterTheQuote_IsRefused()
     {
         var rentals = _db.Get<IRentalService>();
-        var quote = rentals.Quote(CarId, 850m, Today, 2);
+        var quote = rentals.Quote(CarId, 850m, Today, 2, Today);
         await UpdateCarAsync(CarId, price: "900");
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(_customer, quote, Ct));
@@ -123,7 +123,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await UpdateCarAsync(CarId, listed: false);
 
         var rentals = _db.Get<IRentalService>();
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(_customer, rentals.Quote(CarId, 850m, Today, 1), Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(_customer, rentals.Quote(CarId, 850m, Today, 1, Today), Ct));
 
         Assert.Equal(RentalService.NotAvailable, error.Message);
         Assert.DoesNotContain(await _db.Get<ICarService>().GetCatalogAsync(_customer, CarFilter.None, Ct), c => c.Id == CarId);

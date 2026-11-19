@@ -407,7 +407,8 @@ public sealed class SqlServerConcurrencyTests
         var customer = await RegisterAsync(a, "musteri", 1);
         var carId = await AddCarAsync(a, admin, "00 YRS 02", dailyPrice: "100");
         var rentals = a.GetRequiredService<IRentalService>();
-        var quote = rentals.Quote(carId, 100m, rentals.Today.AddDays(1), 2);
+        var today = await rentals.GetTodayAsync(customer, Ct);
+        var quote = rentals.Quote(carId, 100m, today.AddDays(1), 2, today);
         var gate = CommandGate.BeforeCommandWith("UPDATE", "[Araclar]");
         await using var changing = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 
@@ -438,7 +439,8 @@ public sealed class SqlServerConcurrencyTests
         var customer = await RegisterAsync(a, "musteri", 1);
         var carId = await AddCarAsync(a, admin, "00 YRS 03", dailyPrice: "100");
         var rentals = a.GetRequiredService<IRentalService>();
-        var quote = rentals.Quote(carId, 100m, rentals.Today.AddDays(1), 2);
+        var today = await rentals.GetTodayAsync(customer, Ct);
+        var quote = rentals.Quote(carId, 100m, today.AddDays(1), 2, today);
         var gate = CommandGate.BeforeCommandWith("DELETE", "[Araclar]");
         await using var deleting = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 

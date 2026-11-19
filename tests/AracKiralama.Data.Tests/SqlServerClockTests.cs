@@ -52,11 +52,14 @@ public sealed class SqlServerClockTests
         var admin = await SetUpAdminAsync(a);
         var customer = await RegisterAsync(a, "musteri", 1);
         var carId = await AddCarAsync(a, admin, "00 SAT 02");
-        await using var behind = database.BuildServices(clock: await ClockAsync(database, TimeSpan.FromDays(-2)));
+        var behindClock = await ClockAsync(database, TimeSpan.FromDays(-2));
+        await using var behind = database.BuildServices(clock: behindClock);
         var rentals = behind.GetRequiredService<IRentalService>();
 
-        // Tomorrow by the wrong clock is yesterday by the database's.
-        var quote = rentals.Quote(carId, 100m, rentals.Today.AddDays(1), 2);
+        // Tomorrow by the wrong clock is yesterday by the database's; a screen that trusted the wrong
+        // clock would offer it.
+        var wrongToday = DateOnly.FromDateTime(behindClock.GetUtcNow().UtcDateTime);
+        var quote = rentals.Quote(carId, 100m, wrongToday.AddDays(1), 2, wrongToday);
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(customer, quote, Ct));
 
         Assert.Equal(RentalService.StartInPast, error.Message);
