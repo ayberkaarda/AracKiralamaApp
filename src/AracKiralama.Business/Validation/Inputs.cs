@@ -136,3 +136,6 @@ internal sealed record CarFields(
 /// customer was shown, checked against <paramref name="Today"/>.
 /// </summary>
 internal sealed record RentalQuoteInput(int Days, decimal DailyPrice, DateOnly StartDate, DateOnly Today);
+
+/// <summary>A maintenance record to check, with today by the database's clock.</summary>
+internal sealed record MaintenanceFields(MaintenanceInput Input, DateOnly Today);

@@ -71,3 +71,16 @@ public readonly record struct BookedRange(DateOnly StartDate, DateOnly EndDate)
     /// </summary>
     public bool Overlaps(DateOnly startDate, DateOnly endDate) => StartDate < endDate && startDate < EndDate;
 }
+
+/// <summary>Why a car's days are taken.</summary>
+public enum BlockKind
+{
+    /// <summary>An active rental holds the days.</summary>
+    Rental = 0,
+
+    /// <summary>An active maintenance or damage record holds the days.</summary>
+    Maintenance = 1,
+}
+
+/// <summary>Days [<see cref="StartDate"/>, <see cref="EndDate"/>) of a car that cannot be booked, and why.</summary>
+public readonly record struct BlockedRange(DateOnly StartDate, DateOnly EndDate, BlockKind Kind);

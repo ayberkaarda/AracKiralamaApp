@@ -57,6 +57,18 @@ public enum AuditEvent
 
     /// <summary>A sign-up used a user name, e-mail address or phone number that is taken; no account was created.</summary>
     RegistrationNotCompleted = 15,
+
+    /// <summary>An admin added, changed or cancelled a maintenance or damage record.</summary>
+    MaintenanceChanged = 16,
+
+    /// <summary>A maintenance write was refused because a rental holds some of the days or the record changed meanwhile.</summary>
+    MaintenanceRefused = 17,
+
+    /// <summary>An admin produced a revenue report.</summary>
+    RevenueReportCreated = 18,
+
+    /// <summary>A rental contract was produced.</summary>
+    ContractCreated = 19,
 }
 
 /// <summary>Role of the account an <see cref="AuditEvent"/> concerns.</summary>
@@ -93,6 +105,10 @@ public static class AuditCodes
         AuditEvent.RentalEnded => "rental.ended",
         AuditEvent.AccountChanged => "account.changed",
         AuditEvent.RegistrationNotCompleted => "auth.account.registration_not_completed",
+        AuditEvent.MaintenanceChanged => "maintenance.changed",
+        AuditEvent.MaintenanceRefused => "maintenance.refused",
+        AuditEvent.RevenueReportCreated => "report.revenue.created",
+        AuditEvent.ContractCreated => "rental.contract.created",
         _ => throw new ArgumentOutOfRangeException(nameof(auditEvent), auditEvent, "Unknown audit event."),
     };
 

@@ -91,7 +91,7 @@ internal sealed class RentalService(
 {
     internal const string CarNotFound = "Araç bulunamadı.";
     internal const string NotAvailable = "Bu araç şu anda kiralamaya kapalı.";
-    internal const string Overlaps = "Araç seçtiğiniz tarihlerin bir kısmında başka bir kiralamada. Lütfen başka tarihler seçin.";
+    internal const string Overlaps = "Araç seçtiğiniz tarihlerin bir kısmında müsait değil. Lütfen başka tarihler seçin.";
     internal const string PriceChanged = "Aracın günlük ücreti değişti. Lütfen güncel ücreti kontrol edip yeniden deneyin.";
     internal const string RentalNotFound = "Kiralama bulunamadı veya zaten sona ermiş.";
     internal const string StartInPast = "Kiralama geçmiş bir tarihte başlayamaz.";
@@ -136,7 +136,7 @@ internal sealed class RentalService(
             case RentOutcome.Rented:
                 audit.Record(AuditEvent.RentalCreated, auditRole);
                 return new RentalReceipt(result.RentalId, current.Total, current.StartDate, current.EndDate);
-            case RentOutcome.Overlaps:
+            case RentOutcome.Overlaps or RentOutcome.InMaintenance:
                 audit.Record(AuditEvent.RentalOverlapRefused, auditRole);
                 throw new BusinessRuleException(Overlaps);
             case RentOutcome.NotAvailable:

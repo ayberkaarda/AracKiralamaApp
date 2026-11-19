@@ -38,6 +38,7 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IValidator<AccountChangeInput>, AccountChangeInputValidator>();
         services.AddSingleton<IValidator<CarFields>, CarFieldsValidator>();
         services.AddSingleton<IValidator<RentalQuoteInput>, RentalQuoteInputValidator>();
+        services.AddSingleton<IValidator<MaintenanceFields>, MaintenanceFieldsValidator>();
         services.AddSingleton<SetupKeyGate>();
         services.AddSingleton<AccessGuard>();
         services.AddSingleton<IAuthService, AuthService>();
@@ -45,6 +46,7 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<ICarService, CarService>();
         services.AddSingleton<IRentalService, RentalService>();
         services.AddSingleton<IAccountService, AccountService>();
+        services.AddSingleton<IMaintenanceService, MaintenanceService>();
         return services;
     }
 }

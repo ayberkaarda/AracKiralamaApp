@@ -31,7 +31,8 @@ public sealed class AuditTests
                 "auth.sign_in.succeeded", "auth.sign_in.failed", "auth.password.upgraded", "auth.account.registered",
                 "auth.password.changed", "auth.password.change_refused", "setup.first_admin.created", "setup.key.refused",
                 "access.denied", "car.changed", "rental.created", "rental.overlap_refused", "rental.ended",
-                "account.changed", "auth.account.registration_not_completed",
+                "account.changed", "auth.account.registration_not_completed", "maintenance.changed", "maintenance.refused",
+                "report.revenue.created", "rental.contract.created",
             ],
             Enum.GetValues<AuditEvent>().Select(AuditCodes.Of));
         Assert.Equal(["unknown", "user", "admin"], Enum.GetValues<AuditRole>().Select(AuditCodes.Of));

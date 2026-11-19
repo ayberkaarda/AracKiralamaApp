@@ -51,6 +51,12 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
             return new RentResult(RentOutcome.Overlaps, 0);
         }
 
+        // Maintenance takes the same lock, so no record can appear on these days before the commit.
+        if (await MaintenanceRepository.OverlapsAsync(db, request.CarId, request.StartDate, request.EndDate, cancellationToken).ConfigureAwait(false))
+        {
+            return new RentResult(RentOutcome.InMaintenance, 0);
+        }
+
         var rental = new Rental
         {
             CarId = request.CarId,
@@ -167,15 +173,30 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
 
     public async Task<IReadOnlyList<BookedRange>> GetBookedRangesAsync(int carId, DateOnly from, CancellationToken cancellationToken = default)
     {
+        var blocked = await GetBlockedRangesAsync(carId, from, DateOnly.MaxValue, cancellationToken).ConfigureAwait(false);
+        return blocked.Select(b => new BookedRange(b.StartDate, b.EndDate)).ToList();
+    }
+
+    public async Task<IReadOnlyList<BlockedRange>> GetBlockedRangesAsync(int carId, DateOnly from, DateOnly until, CancellationToken cancellationToken = default)
+    {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var ranges = await db.Rentals
+        var rentals = await db.Rentals
             .AsNoTracking()
-            .Where(r => r.CarId == carId && r.Status == RentalStatus.Active && r.EndDate > from)
-            .OrderBy(r => r.StartDate)
+            .Where(r => r.CarId == carId && r.Status == RentalStatus.Active && r.EndDate > from && r.StartDate < until)
             .Select(r => new { r.StartDate, r.EndDate })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
-        return ranges.Select(r => new BookedRange(r.StartDate, r.EndDate)).ToList();
+        var maintenance = await db.Maintenance
+            .AsNoTracking()
+            .Where(m => m.CarId == carId && m.Status == MaintenanceStatus.Active && m.EndDate > from && m.StartDate < until)
+            .Select(m => new { m.StartDate, m.EndDate })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return rentals.Select(r => new BlockedRange(r.StartDate, r.EndDate, BlockKind.Rental))
+            .Concat(maintenance.Select(m => new BlockedRange(m.StartDate, m.EndDate, BlockKind.Maintenance)))
+            .OrderBy(b => b.StartDate)
+            .ThenBy(b => b.Kind)
+            .ToList();
     }
 
     /// <summary>

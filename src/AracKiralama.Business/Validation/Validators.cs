@@ -314,3 +314,38 @@ internal sealed class RentalQuoteInputValidator : AbstractValidator<RentalQuoteI
     internal static string StartTooFar(RentalPolicy policy) =>
         string.Create(CultureInfo.InvariantCulture, $"Kiralama en fazla {policy.MaxAdvanceDays} gün sonrası için yapılabilir.");
 }
+
+/// <summary>
+/// A maintenance or damage record: a known kind, a plain text description of at most
+/// <see cref="InputRules.MaintenanceDescriptionMaxLength"/> characters, an end after the start within
+/// <see cref="RentalPolicy.MaxAllowedDays"/> days of today on either side, and an optional cost.
+/// </summary>
+internal sealed class MaintenanceFieldsValidator : AbstractValidator<MaintenanceFields>
+{
+    internal const string KindInvalid = "Lütfen kayıt türünü seçin.";
+    internal const string DescriptionRequired = "Lütfen yapılan işi veya hasarı kısaca yazın.";
+    internal const string DescriptionInvalid = "Açıklama en fazla 500 karakter olabilir ve kontrol karakteri içeremez.";
+    internal const string DatesInvalid = "Bitiş tarihi başlangıç tarihinden sonra olmalıdır.";
+    internal const string DatesOutOfRange = "Tarihler bugünden en fazla 10 yıl önce veya sonra olabilir.";
+    internal const string CostInvalid = "Maliyet 0 veya daha büyük, en fazla iki ondalık basamaklı bir tutar olmalıdır (örnek: 1250,50).";
+
+    public MaintenanceFieldsValidator()
+    {
+        ClassLevelCascadeMode = CascadeMode.Stop;
+        RuleLevelCascadeMode = CascadeMode.Stop;
+
+        RuleFor(f => f.Input.Kind)
+            .IsInEnum().WithMessage(KindInvalid);
+        RuleFor(f => f.Input.Description)
+            .Must(d => !string.IsNullOrWhiteSpace(d)).WithMessage(DescriptionRequired)
+            .Must(InputRules.IsValidMaintenanceDescription).WithMessage(DescriptionInvalid);
+        RuleFor(f => f.Input)
+            .Must(i => i.EndDate > i.StartDate).WithMessage(DatesInvalid)
+            .Must((f, i) => i.StartDate.DayNumber >= f.Today.DayNumber - RentalPolicy.MaxAllowedDays
+                && i.EndDate.DayNumber <= f.Today.DayNumber + RentalPolicy.MaxAllowedDays)
+            .WithMessage(DatesOutOfRange);
+        RuleFor(f => f.Input.Cost)
+            .Must(c => string.IsNullOrWhiteSpace(c) || (InputRules.TryParseMoney(c, out var cost) && cost <= InputRules.MaxDailyPrice))
+            .WithMessage(CostInvalid);
+    }
+}
