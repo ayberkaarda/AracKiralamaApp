@@ -191,6 +191,21 @@ internal sealed class SqlServerTestDatabase : IAsyncDisposable
         return reader.GetString(0);
     }
 
+    /// <summary>
+    /// Waits until <paramref name="count"/> requests on this database wait for a lock held by another
+    /// session (also an application lock), failing the test after 30 seconds.
+    /// </summary>
+    public async Task WaitForBlockedRequestsAsync(int count, CancellationToken ct)
+    {
+        const string Blocked = "SELECT COUNT(*) FROM sys.dm_exec_requests WHERE database_id = DB_ID(@name) AND blocking_session_id <> 0";
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (await ScalarAsync(Server, Blocked, ct, ("@name", Name)) < count)
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"Fewer than {count} requests are waiting for a lock.");
+            await Task.Delay(25, ct);
+        }
+    }
+
     /// <summary>A file of the repository, found by walking up from the test output folder.</summary>
     public static string RepositoryFile(params string[] parts)
     {

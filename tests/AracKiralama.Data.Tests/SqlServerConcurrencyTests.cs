@@ -236,6 +236,99 @@ public sealed class SqlServerConcurrencyTests
         Assert.Equal(100, await database.ScalarAsync("SELECT CAST(GunlukUcret AS int) FROM dbo.Araclar WHERE AracID = @id", Ct, ("@id", carId)));
     }
 
+    /// <summary>
+    /// A cancellation holds the car's lock, just before its UPDATE, when another customer books days
+    /// that the cancelled rental held. The booking waits for the cancellation instead of deciding on the
+    /// old days, and then gets them.
+    /// </summary>
+    [Fact]
+    public async Task Rent_WhileAnOverlappingRentalIsCancelled_WaitsAndThenGetsTheDays()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var first = await RegisterAsync(a, "birinci", 1);
+        var second = await RegisterAsync(a, "ikinci", 2);
+        var carId = await AddCarAsync(a, admin, "00 YRS 01");
+        var held = await RentAsync(a, first, carId, startOffset: 2, days: 3);
+        var gate = CommandGate.BeforeCommandWith("UPDATE", "[Kiralama]");
+        await using var ending = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var cancel = ending.GetRequiredService<IRentalService>().EndAsync(first, held.RentalId, Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        var booking = Task.Run(() => RentAsync(a, second, carId, startOffset: 3, days: 1), Ct);
+        await database.WaitForBlockedRequestsAsync(1, Ct);
+        Assert.False(booking.IsCompleted);
+
+        gate.Release();
+        Assert.Equal(RentalEnding.Cancelled, await cancel);
+        var receipt = await booking;
+        Assert.Equal(1, await ActiveAsync(database, carId));
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama WHERE KiralamaID = @id AND Durum = 0", Ct, ("@id", receipt.RentalId)));
+    }
+
+    /// <summary>
+    /// A price change holds the car's lock, just before its UPDATE, when a customer books at the old
+    /// price. The booking waits and is refused as changed; nothing is booked at the old price.
+    /// </summary>
+    [Fact]
+    public async Task Rent_WhileThePriceChanges_WaitsAndIsRefusedAsChanged()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var customer = await RegisterAsync(a, "musteri", 1);
+        var carId = await AddCarAsync(a, admin, "00 YRS 02", dailyPrice: "100");
+        var rentals = a.GetRequiredService<IRentalService>();
+        var quote = rentals.Quote(carId, 100m, rentals.Today.AddDays(1), 2);
+        var gate = CommandGate.BeforeCommandWith("UPDATE", "[Araclar]");
+        await using var changing = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var change = changing.GetRequiredService<ICarService>().UpdateAsync(
+            admin, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 YRS 02", "200", null, true), Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        var booking = Task.Run(() => rentals.RentAsync(customer, quote, Ct), Ct);
+        await database.WaitForBlockedRequestsAsync(1, Ct);
+        Assert.False(booking.IsCompleted);
+
+        gate.Release();
+        await change;
+        Assert.Equal(RentalService.PriceChanged, (await Assert.ThrowsAsync<BusinessRuleException>(() => booking)).Message);
+        Assert.Equal(0, await ActiveAsync(database, carId));
+    }
+
+    /// <summary>
+    /// A deletion holds the car's lock, just before its DELETE, when a customer books the car. The
+    /// booking waits and finds no car; no rental points at the deleted car.
+    /// </summary>
+    [Fact]
+    public async Task Rent_WhileTheCarIsDeleted_WaitsAndFindsNoCar()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var customer = await RegisterAsync(a, "musteri", 1);
+        var carId = await AddCarAsync(a, admin, "00 YRS 03", dailyPrice: "100");
+        var rentals = a.GetRequiredService<IRentalService>();
+        var quote = rentals.Quote(carId, 100m, rentals.Today.AddDays(1), 2);
+        var gate = CommandGate.BeforeCommandWith("DELETE", "[Araclar]");
+        await using var deleting = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var delete = deleting.GetRequiredService<ICarService>().DeleteAsync(admin, carId, Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        var booking = Task.Run(() => rentals.RentAsync(customer, quote, Ct), Ct);
+        await database.WaitForBlockedRequestsAsync(1, Ct);
+        Assert.False(booking.IsCompleted);
+
+        gate.Release();
+        await delete;
+        Assert.Equal(RentalService.CarNotFound, (await Assert.ThrowsAsync<BusinessRuleException>(() => booking)).Message);
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
+    }
+
     private static string Plate(string letters, int round) => "00 " + letters + " " + round.ToString("00", CultureInfo.InvariantCulture);
 
     private static Task<int> ActiveAsync(SqlServerTestDatabase database, int carId) =>
