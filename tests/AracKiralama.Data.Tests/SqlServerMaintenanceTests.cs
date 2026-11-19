@@ -21,6 +21,53 @@ public sealed class SqlServerMaintenanceTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>
+    /// A maintenance write that waits for the car's lock is stamped with the database's clock when it
+    /// writes, not when it was asked for: the record's times are not earlier than the moment the lock
+    /// was released, also for a change.
+    /// </summary>
+    [Fact]
+    public async Task Write_AfterWaitingForTheCarLock_IsStampedWhenItWrites()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var carId = await AddCarAsync(a, admin, "00 ZMN 01");
+        var maintenance = a.GetRequiredService<IMaintenanceService>();
+
+        var released = await HoldCarLockAsync(database, carId, () => maintenance.AddAsync(admin, carId, Input(database, 3, 2), Ct));
+        var recordId = await database.ScalarAsync("SELECT MAX(BakimID) FROM dbo.AracBakim", Ct);
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.AracBakim WHERE BakimID = @id AND OlusturmaZamani < @released", Ct, ("@id", recordId), ("@released", released.AddMilliseconds(-10))));
+
+        released = await HoldCarLockAsync(database, carId, () => maintenance.UpdateAsync(admin, recordId, 1, Input(database, 4, 2), Ct));
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.AracBakim WHERE BakimID = @id AND GuncellemeZamani < @released", Ct, ("@id", recordId), ("@released", released.AddMilliseconds(-10))));
+    }
+
+    /// <summary>
+    /// Holds the car's lock while <paramref name="write"/> starts and waits for it, keeps it a moment
+    /// longer, then releases it and lets the write finish; returns the database's time of the release.
+    /// </summary>
+    private static async Task<DateTime> HoldCarLockAsync(SqlServerTestDatabase database, int carId, Func<Task> write)
+    {
+        await using var holder = new SqlConnection(database.ConnectionString);
+        await holder.OpenAsync(Ct);
+        await using var held = (SqlTransaction)await holder.BeginTransactionAsync(Ct);
+        await using (var take = new SqlCommand("EXEC sp_getapplock @Resource = @resource, @LockMode = 'Exclusive', @LockOwner = 'Transaction';", holder, held))
+        {
+            take.Parameters.AddWithValue("@resource", "AracKiralama.Car." + carId.ToString(CultureInfo.InvariantCulture));
+            await take.ExecuteNonQueryAsync(Ct);
+        }
+
+        var writing = Task.Run(write, Ct);
+        await database.WaitForBlockedRequestsAsync(1, Ct);
+        await Task.Delay(TimeSpan.FromSeconds(1), Ct);
+        var released = (await database.ServerUtcNowAsync(Ct)).UtcDateTime;
+        await held.CommitAsync(Ct);
+        await writing;
+        return released;
+    }
+
     /// <summary>A customer books and an admin logs maintenance for overlapping days at once: exactly one of them gets the days.</summary>
     [Fact]
     public async Task RentAndMaintenance_ForOverlappingDaysAtOnce_ExactlyOneGetsThem()

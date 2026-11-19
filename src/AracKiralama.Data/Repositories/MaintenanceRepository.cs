@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AracKiralama.Data.Repositories;
 
-internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> contextFactory) : IMaintenanceRepository
+internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> contextFactory, TimeProvider timeProvider) : IMaintenanceRepository
 {
     public async Task<IReadOnlyList<MaintenanceRecord>> GetForCarAsync(int carId, CancellationToken cancellationToken = default)
     {
@@ -19,7 +19,7 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
             .ConfigureAwait(false);
     }
 
-    public async Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, DateTime nowUtc, CancellationToken cancellationToken = default)
+    public async Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, CancellationToken cancellationToken = default)
     {
         RequireRange(values);
 
@@ -41,6 +41,8 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
             return new MaintenanceWriteResult(MaintenanceOutcome.OverlapsRental);
         }
 
+        // Stamped after the lock was granted, inside the transaction, so the time is the write's own.
+        var nowUtc = await DatabaseClock.ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
         var record = new MaintenanceRecord
         {
             CarId = carId,
@@ -65,7 +67,6 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
         int recordId,
         int expectedVersion,
         MaintenanceValues changed,
-        DateTime nowUtc,
         CancellationToken cancellationToken = default)
     {
         RequireRange(changed);
@@ -85,6 +86,7 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
         // The WHERE clause is the final decision: a record cancelled or changed since the form loaded it
         // matches no row, so a stale form never writes over another admin's change.
         var (kind, description, start, end, cost) = changed;
+        var nowUtc = await DatabaseClock.ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
         var updated = await db.Maintenance
             .Where(m => m.Id == recordId && m.Status == MaintenanceStatus.Active && m.Version == expectedVersion)
             .ExecuteUpdateAsync(
@@ -107,7 +109,7 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
         return new MaintenanceWriteResult(MaintenanceOutcome.Saved, recordId, expectedVersion + 1);
     }
 
-    public async Task<MaintenanceWriteResult> CancelAsync(Actor admin, int recordId, int expectedVersion, DateTime nowUtc, CancellationToken cancellationToken = default)
+    public async Task<MaintenanceWriteResult> CancelAsync(Actor admin, int recordId, int expectedVersion, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -116,6 +118,7 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
             return new MaintenanceWriteResult(MaintenanceOutcome.NotFound);
         }
 
+        var nowUtc = await DatabaseClock.ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
         var cancelled = await db.Maintenance
             .Where(m => m.Id == recordId && m.Status == MaintenanceStatus.Active && m.Version == expectedVersion)
             .ExecuteUpdateAsync(

@@ -32,8 +32,9 @@ public interface IMaintenanceService
 }
 
 /// <remarks>
-/// The day limits are checked against today by the database's clock, and the records are stamped with
-/// that clock, so computers with wrong clocks neither accept other ranges nor write other times.
+/// The day limits are checked against today by the database's clock, and the repository stamps the records
+/// with that clock inside the write, after the car's lock was granted, so computers with wrong clocks neither
+/// accept other ranges nor write other times, and a write that waited for the lock is stamped when it happens.
 /// </remarks>
 internal sealed class MaintenanceService(
     IMaintenanceRepository maintenance,
@@ -59,7 +60,7 @@ internal sealed class MaintenanceService(
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
         var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var values = Validate(input, Today(now));
-        var result = await access.WriteAsActorAsync(session, () => maintenance.AddAsync(session.Actor, carId, values, now, cancellationToken)).ConfigureAwait(false);
+        var result = await access.WriteAsActorAsync(session, () => maintenance.AddAsync(session.Actor, carId, values, cancellationToken)).ConfigureAwait(false);
         Check(result.Outcome);
         return result.RecordId;
     }
@@ -71,17 +72,16 @@ internal sealed class MaintenanceService(
         var values = Validate(input, Today(now));
         var result = await access.WriteAsActorAsync(
             session,
-            () => maintenance.UpdateAsync(session.Actor, recordId, expectedVersion, values, now, cancellationToken)).ConfigureAwait(false);
+            () => maintenance.UpdateAsync(session.Actor, recordId, expectedVersion, values, cancellationToken)).ConfigureAwait(false);
         Check(result.Outcome);
     }
 
     public async Task CancelAsync(UserSession session, int recordId, int expectedVersion, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
-        var now = await clock.GetUtcNowAsync(cancellationToken).ConfigureAwait(false);
         var result = await access.WriteAsActorAsync(
             session,
-            () => maintenance.CancelAsync(session.Actor, recordId, expectedVersion, now, cancellationToken)).ConfigureAwait(false);
+            () => maintenance.CancelAsync(session.Actor, recordId, expectedVersion, cancellationToken)).ConfigureAwait(false);
         Check(result.Outcome);
     }
 

@@ -12,11 +12,11 @@ public interface IMaintenanceRepository
     Task<IReadOnlyList<MaintenanceRecord>> GetForCarAsync(int carId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stores an active record for <paramref name="carId"/>, stamped with <paramref name="nowUtc"/> (the
-    /// database's clock), unless an active rental of the car shares a day with its range.
+    /// Stores an active record for <paramref name="carId"/>, stamped with the database's clock read after the
+    /// car's lock was granted, unless an active rental of the car shares a day with its range.
     /// </summary>
     /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
-    Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, DateTime nowUtc, CancellationToken cancellationToken = default);
+    Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes an active record to <paramref name="changed"/>, only while its stored version is still
@@ -28,12 +28,11 @@ public interface IMaintenanceRepository
         int recordId,
         int expectedVersion,
         MaintenanceValues changed,
-        DateTime nowUtc,
         CancellationToken cancellationToken = default);
 
     /// <summary>Cancels an active record, only while its stored version is still <paramref name="expectedVersion"/>.</summary>
     /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
-    Task<MaintenanceWriteResult> CancelAsync(Actor admin, int recordId, int expectedVersion, DateTime nowUtc, CancellationToken cancellationToken = default);
+    Task<MaintenanceWriteResult> CancelAsync(Actor admin, int recordId, int expectedVersion, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The fields of a maintenance record an admin enters.</summary>
