@@ -31,10 +31,12 @@ internal static class RentalCards
         var picture = new VehiclePicture { Name = "picRental" + id, Size = new Size(124, 76), Margin = new Padding(0, 0, Spacing.M, 0), Anchor = AnchorStyles.Left | AnchorStyles.Top };
         picture.ShowCar(rental.Model, null, rental.ImageUrl, rental.Brand + " " + rental.Model);
 
-        var title = new HeadingLabel
+        var title = new Label
         {
             Name = "lblRentalCar" + id,
             Text = rental.Brand + " " + rental.Model,
+            AutoSize = true,
+            UseMnemonic = false,
             Font = Theme.Fonts.Subtitle,
             ForeColor = p.Text,
             Margin = Padding.Empty,

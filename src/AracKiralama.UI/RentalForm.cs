@@ -25,7 +25,7 @@ namespace AracKiralama.UI
         private bool _quoteRefused;
 
         private readonly VehiclePicture picCar = new() { Name = nameof(picCar), Height = 170 };
-        private readonly HeadingLabel lblCarName = new() { Name = nameof(lblCarName), Text = "Araç yükleniyor…" };
+        private readonly Label lblCarName = new() { Name = nameof(lblCarName), Text = "Araç yükleniyor…", AutoSize = true, UseMnemonic = false };
         private readonly PlateChip lblPlate = new() { Name = nameof(lblPlate) };
         private readonly Label lblBrand = Value(nameof(lblBrand));
         private readonly Label lblModel = Value(nameof(lblModel));

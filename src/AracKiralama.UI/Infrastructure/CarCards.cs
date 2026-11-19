@@ -24,10 +24,13 @@ internal static class CarCards
         var picture = new VehiclePicture { Name = "picCar" + id, Height = PictureHeight, Margin = new Padding(0, 0, 0, Spacing.M) };
         picture.ShowCar(car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
 
-        var title = new HeadingLabel
+        // A plain auto-sized label: the table measures its wrapped height itself, so a long name grows the row.
+        var title = new Label
         {
             Name = "lblCarName" + id,
             Text = car.Brand + " " + car.Model,
+            AutoSize = true,
+            UseMnemonic = false,
             Font = Theme.Fonts.Subtitle,
             ForeColor = p.Text,
             Margin = Padding.Empty,
