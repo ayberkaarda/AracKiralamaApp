@@ -8,10 +8,10 @@ using AracKiralama.Domain.Entities;
 namespace AracKiralama.Screenshots;
 
 /// <summary>
-/// An invented rental fleet in memory, so the screenshots need no database and never show real data: made-up
-/// brands and models (common Turkish words, no manufacturer's names), demonstration plates with the province
-/// code 00 that no Turkish plate uses, sample accounts on the reserved example.com domain and no pictures from
-/// the web (every car is the application's own drawing). Every call completes synchronously.
+/// A sample rental fleet in memory, so the screenshots need no database and never show real data: common car
+/// models shown with the application's bundled photographs (credited in docs/CREDITS.md), demonstration plates
+/// with the province code 00 that no Turkish plate uses, sample accounts on the reserved example.com domain and
+/// nothing loaded from the web. Every call completes synchronously.
 /// </summary>
 internal sealed class SyntheticFleet : IAuthService, ICarService, IRentalService, IContractService, IAvailabilityService, IMaintenanceService, IReportService, IAccountService, ISetupService
 {
@@ -20,13 +20,13 @@ internal sealed class SyntheticFleet : IAuthService, ICarService, IRentalService
 
     private readonly List<Car> _cars =
     [
-        Car(1, "Pusula", "Kent", 2023, "Otomatik", "Benzin", 18_400, "Beyaz", "00 PK 101", 1250m),
-        Car(2, "Yelken", "Liman", 2022, "Manuel", "Dizel", 42_150, "Lacivert", "00 YL 214", 1100m),
-        Car(3, "Doruk", "Yayla", 2024, "Otomatik", "Hibrit", 7_900, "Kırmızı", "00 DR 330", 1890m),
-        Car(4, "Meltem", "Sahil", 2021, "Manuel", "Benzin", 63_020, "Gümüş", "00 ML 048", 950m),
-        Car(5, "Pusula", "Rota", 2023, "Otomatik", "Elektrik", 12_300, "Gri", "00 PR 512", 2150m),
-        Car(6, "Yelken", "Koru", 2020, "Manuel", "Dizel", 88_700, "Yeşil", "00 YK 766", 1350m, listed: false),
-        Car(7, "Doruk", "Vadi Uzun Şaseli Panelvan", 2022, "Manuel", "Dizel", 51_000, "Beyaz", "00 DV 902", 1650m),
+        Car(1, "Renault", "Clio", 2023, "Otomatik", "Benzin", 18_400, "Beyaz", "00 RC 101", 1250m),
+        Car(2, "Fiat", "Egea", 2022, "Manuel", "Dizel", 42_150, "Füme", "00 FE 214", 1100m),
+        Car(3, "Toyota", "Corolla", 2024, "Otomatik", "Hibrit", 7_900, "Gümüş", "00 TC 330", 1890m),
+        Car(4, "Dacia", "Duster", 2025, "Manuel", "Benzin", 23_020, "Gri", "00 DD 048", 950m),
+        Car(5, "Tesla", "Model 3", 2024, "Otomatik", "Elektrik", 12_300, "Beyaz", "00 TM 512", 2150m),
+        Car(6, "Volkswagen", "Golf", 2024, "Otomatik", "Benzin", 28_700, "Beyaz", "00 VG 766", 1350m, listed: false),
+        Car(7, "Ford", "Transit Custom Uzun Şaseli Panelvan", 2022, "Manuel", "Dizel", 51_000, "Mavi", "00 FT 902", 1650m),
     ];
 
     private readonly List<UserSummary> _accounts =
@@ -158,11 +158,11 @@ internal sealed class SyntheticFleet : IAuthService, ICarService, IRentalService
         ];
         RevenueLine[] cars =
         [
-            new("Doruk Yayla", "00 DR 330", 8, 26, 49_140m),
-            new("Pusula Rota", "00 PR 512", 6, 19, 40_850m),
-            new("Pusula Kent", "00 PK 101", 7, 24, 30_000m),
-            new("Yelken Liman", "00 YL 214", 6, 22, 24_200m),
-            new("Meltem Sahil", "00 ML 048", 3, 16, 5_320m),
+            new("Toyota Corolla", "00 TC 330", 8, 26, 49_140m),
+            new("Tesla Model 3", "00 TM 512", 6, 19, 40_850m),
+            new("Renault Clio", "00 RC 101", 7, 24, 30_000m),
+            new("Fiat Egea", "00 FE 214", 6, 22, 24_200m),
+            new("Dacia Duster", "00 DD 048", 3, 16, 5_320m),
         ];
         var total = new RevenueLine("Toplam", null, periods.Sum(p => p.Rentals), periods.Sum(p => p.Days), periods.Sum(p => p.Revenue));
         return Task.FromResult(new RevenueReport(firstDay, lastDay, grouping, periods, cars, total, new DateTime(2026, 3, 10, 9, 0, 0), SampleToday));

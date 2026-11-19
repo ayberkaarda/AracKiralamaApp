@@ -8,7 +8,7 @@ namespace AracKiralama.Screenshots;
 /// <summary>
 /// Usage: <c>dotnet run --project tools/Screenshots -- [icons|screenshots|all] [screen names...]</c> (default:
 /// screenshots). "icons" rasterizes assets/logo.svg into assets/app.ico and assets/logo-256.png; "screenshots"
-/// writes the README images to screenshots/ at 1x and 2x, with the invented fleet of <see cref="SyntheticFleet"/>.
+/// writes the README images to screenshots/ at 1x and 2x, with the sample fleet of <see cref="SyntheticFleet"/>.
 /// No window is shown and the focus is never taken. "--dark" and "--contrast" draw the dark and the high
 /// contrast palette into a folder of their own instead, for checking them.
 /// </summary>
