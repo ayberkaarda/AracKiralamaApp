@@ -6,7 +6,7 @@ using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
 
-/// <summary>The application ships only its own artwork, its windows carry neutral titles and car pictures are loaded safely.</summary>
+/// <summary>The application ships its own artwork (and only credited car photographs), its windows carry neutral titles and car pictures are loaded safely.</summary>
 public sealed class BrandingTests
 {
     [Fact]
@@ -16,7 +16,7 @@ public sealed class BrandingTests
 
         Assert.Equal(
             ["AracKiralama.UI.Assets.app.ico", "AracKiralama.UI.Assets.logo-256.png"],
-            resources.Where(r => r.Contains(".Assets.", StringComparison.Ordinal)));
+            resources.Where(r => r.Contains(".Assets.", StringComparison.Ordinal) && !r.StartsWith(CarPhotos.ResourcePrefix, StringComparison.Ordinal)));
         Assert.DoesNotContain(resources, r => r.EndsWith(".resources", StringComparison.Ordinal));
         Assert.Equal(256, AppAssets.Logo.Width);
         Assert.NotNull(AppAssets.Icon);
