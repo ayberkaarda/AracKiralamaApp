@@ -31,7 +31,8 @@ internal static class DisplayFormat
 
     public static string Date(DateOnly? value) => value is { } date ? Date(date) : "-";
 
-    public static string Money(decimal value) => value.ToString("0.00", Turkish) + " TL";
+    /// <summary>"1.250,00 TL": thousands grouped, so prices and totals read at a glance.</summary>
+    public static string Money(decimal value) => value.ToString("#,0.00", Turkish) + " TL";
 
     /// <summary>A price as the car form edits it (decimal comma, no currency).</summary>
     public static string MoneyInput(decimal value) => value.ToString("0.##", Turkish);
@@ -43,21 +44,11 @@ internal static class DisplayFormat
 /// </summary>
 internal static class AppAssets
 {
-    private static readonly Lazy<Image> LazyLogo = new(() => LoadImage("logo.png"));
-    private static readonly Lazy<Image> LazyBackground = new(() => LoadImage("background.png"));
-    private static readonly Lazy<Image> LazyHero = new(() => LoadImage("hero.png"));
-    private static readonly Lazy<Image> LazyCar = new(() => LoadImage("car.png"));
+    private static readonly Lazy<Image> LazyLogo = new(() => LoadImage("logo-256.png"));
     private static readonly Lazy<Icon> LazyIcon = new(LoadIcon);
 
+    /// <summary>The road and pin logo at 256 px (rasterized from assets/logo.svg), for painting it at any size.</summary>
     public static Image Logo => LazyLogo.Value;
-
-    public static Image Background => LazyBackground.Value;
-
-    /// <summary>The picture beside the sign-in fields.</summary>
-    public static Image Hero => LazyHero.Value;
-
-    /// <summary>Shown for a car without a picture or whose picture cannot be loaded.</summary>
-    public static Image CarPlaceholder => LazyCar.Value;
 
     public static Icon Icon => LazyIcon.Value;
 

@@ -15,20 +15,34 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 
 ## 📦 Özellikler
 
+### Tasarım ve temalar
+
+- ✅ **Kendi görsel kimliği**: asfalt grafit ve sinyal turuncusu, yol ve konum iğnesi logosu; başlıklar, ücretler,
+  plakalar ve takvim günleri Bahnschrift (Windows'un DIN tarzı trafik levhası yazı tipi), metinler Segoe UI ile.
+  Resmi olmayan araçlar kendi renginde kodla çizilir; hiçbir fotoğraf, marka ya da gerçek model kullanılmaz.
+- ✅ **Açık, koyu ve yüksek karşıtlık**: `Appearance:Theme` ayarı `Light` (varsayılan), `Dark` ya da `System` (Windows
+  uygulama modunu izler) seçer. Yüksek karşıtlık her zaman önceliklidir; Windows sistem renkleri ve yerel denetimler
+  kullanılır, seçili ve üzerine gelinen öğeler HighlightText ile yazılır. Açık ekranlar, uygulama çalışırken yüksek
+  karşıtlık ya da uygulama modu değişince kendini günceller.
+- ✅ **Her ekran için tek çerçeve**: ekranın ne için olduğunu söyleyen başlık, sonuçlar ve retler için pencere içi
+  ileti şeridi (odağı alan ileti penceresi yok; yalnızca sorular temalı bir pencerede sorulur), içerik ve işlemlerin
+  bulunduğu alt bilgi. Pencereler içeriğe göre boyutlanır, ekranın çalışma alanından büyük açılmaz ve küçük ekranda
+  gövdeleri kayar; uygulama monitör başına DPI uyumludur.
+
 ### Araç kataloğu
 
-- ✅ **Katalog** ("Araç Kirala"): kiralamaya açık araçlar; resim, marka, model, yıl, vites tipi, yakıt tipi ve günlük
-  ücretle.
+- ✅ **Katalog** ("Araçlar"): kiralamaya açık araçlar kartlar hâlinde; resim, marka, model, plaka, yıl, vites tipi,
+  yakıt tipi, renk ve günlük ücretle.
 - ✅ **Filtreler**: marka ("Marka"), vites tipi ("Vites Tipi") ve yakıt tipi ("Yakıt Tipi"); filtre listelerinin
   doldurulması kendiliğinden yükleme başlatmaz ve yalnızca son filtrenin cevabı gösterilir.
 - ✅ **Araç resimleri** arka planda ve yalnızca herkese açık http veya https adreslerinden yüklenir; diğer her
-  durumda uygulamanın kendi yer tutucu görseli gösterilir.
+  durumda uygulamanın aracı kendi renginde gösteren çizimi kullanılır.
 
 ### Kiralama, iptal ve iade
 
-- ✅ **Kiralama** ("Kirala" → "Kiralama Ekranı"): alış günü ("Alış Tarihi") ve gün sayısı ("Gün Sayısı") seçilir;
-  ekran aracın dolu olduğu günleri listeler. "Ödemeye Geç" alış ve iade tarihlerini ve toplam tutarı gösterip onay
-  ister. Ödeme alınmaz.
+- ✅ **Kiralama** ("Kirala" → "Araç kirala"): alış günü ("Alış günü") ve gün sayısı ("Gün sayısı") seçilir; ekran
+  iade gününü ve toplam tutarı değiştikçe gösterir, aracın dolu olduğu günleri listeler. "Kiralamayı Onayla" alış ve
+  iade tarihlerini ve toplam tutarı gösterip onay ister. Ödeme alınmaz.
 - ✅ **Günler yarı açık aralıktır**: bir kiralama alış gününden iade gününe kadar olan günleri tutar, iade günü
   dahil değildir. Bir kiralama başka birinin bittiği gün başlayabilir; ortak bir gün, iki müşteri aynı anda kiralasa
   bile reddedilir.
@@ -37,25 +51,25 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   Kiralama hiçbir zaman geçmiş bir günde başlamaz.
 - ✅ **Ücret kontrolü**: teklif gösterildikten sonra günlük ücret değişirse kiralama reddedilir ve hiçbir şey
   yazılmaz.
-- ✅ **İptal veya iade**: müşterinin profil ekranında ("Kullanıcı Profili") hesabın kendi aktif kiralamaları
-  listelenir; alış gününden önce "Kiralamayı İptal Et" tüm günleri boşaltır, kiralama başladıktan sonra "İade Al"
+- ✅ **İptal veya iade**: "Kiralamalarım" ekranında hesabın kendi aktif kiralamaları aşamalarıyla ("Başlamadı",
+  "Devam ediyor") kartlar hâlinde listelenir; alış gününden önce "Kiralamayı İptal Et" tüm günleri boşaltır, kiralama başladıktan sonra "İade Al"
   aracı bugün teslim alır ve kalan günleri boşaltır. Yöneticiler kiralama panelinde aynısını her kiralama için
   yapar. Kiralamalar hiçbir zaman silinmez; satırları yeni bir durumla kalır.
 
 ### Yönetim paneli
 
-- ✅ **Araçlar** ("Yönetim Paneli"): marka, model, yıl, vites tipi, yakıt tipi, kilometre, renk, plaka, günlük ücret
-  ve resim linkiyle ("Resim Linki") araç ekleme ("Araç Ekle"), güncelleme ("Aracı Güncelle") ve silme ("Aracı Sil").
-  Her geçersiz alan kendi kontrolünün yanında işaretlenir. Plakalar benzersizdir. Kiralama geçmişi olan araç
+- ✅ **Araçlar** ("Yönetim paneli"): marka, model, yıl, vites tipi, yakıt tipi, kilometre, renk, plaka, günlük ücret
+  ve resim adresiyle ("Resim adresi") araç ekleme ("Araç Ekle"), güncelleme ("Aracı Güncelle") ve silme ("Aracı Sil").
+  Her geçersiz alan kırmızı bir çerçeve ve kendi iletisiyle işaretlenir. Plakalar benzersizdir. Kiralama geçmişi olan araç
   silinemez; bunun yerine "Kiralamaya açık" seçeneği aracı müşterilerden gizler. Başka bir yöneticinin
   değişikliğinden (yeni ücret, kiralamaya kapatma) önce açılmış bir formdan yapılan değişiklik reddedilir ve araç
   yeniden yüklenir.
-- ✅ **Hesaplar** ("Kullanıcı Yönetim Paneli"): rol, e-posta ve telefonla (listede maskeli) hesap ekleme,
+- ✅ **Hesaplar** ("Hesaplar"): rol, e-posta ve telefonla (listede maskeli) hesap ekleme,
   güncelleme ve silme; yeni şifre eskisinin yerine geçer ve kilidi kaldırır. Yöneticiler ve kiralaması olan hesaplar
   silinemez, son yönetici yönetici rolünü korur. Hesabın rolü veya şifresi başka bir yerde değişmeden önce açılmış bir
   formdan yapılan değişiklik reddedilir ve hesap yeniden yüklenir; böylece eski bir form, başka bir yöneticinin az önce
   aldığı rolü geri veremez. Kendi rolünü veya şifresini değiştiren yöneticinin oturumu kapatılır.
-- ✅ **Kiralamalar** ("Kiralanan Araçlar"): tüm aktif kiralamalar; marka, vites tipi ve yakıt tipine göre
+- ✅ **Kiralamalar** ("Kiralamalar"): tüm aktif kiralamalar kiracılarıyla; marka, vites tipi ve yakıt tipine göre
   filtrelenebilir.
 
 ### Takvim, bakım, raporlar ve sözleşmeler
@@ -111,8 +125,20 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 
 ## 🖼️ Ekran Görüntüleri
 
-Ekran görüntüleri yeni tasarım için yeniden hazırlanıyor ve tasarımla birlikte geri gelecek. Önceki görseller
-artık var olmayan eski uygulama ekranlarını gösteriyordu ve kaldırıldı.
+Ekranlar hayali bir filoyla (uydurma marka ve modeller, hiçbir plakanın kullanmadığı 00 il koduyla gösterim
+plakaları, example.com üzerinde örnek hesaplar) pencere açılmadan çizilir; gerçek veri, marka ya da fotoğraf
+göstermez, her araç uygulamanın kendi çizimidir. Her görsel 2x sürümüne bağlanır. Yeniden çizmek için:
+`dotnet run --project tools/Screenshots -c Release -- screenshots`.
+
+| | |
+|---|---|
+| [![Giriş](screenshots/giris.png)](screenshots/giris-2x.png)<br>**Giriş**: marka paneliyle | [![Hesap oluştur](screenshots/hesap-olusturma.png)](screenshots/hesap-olusturma-2x.png)<br>**Hesap oluştur** |
+| [![Araçlar](screenshots/araclar.png)](screenshots/araclar-2x.png)<br>**Araçlar**: kiralamadan sonra, sonuç pencerenin içinde | [![Araç kirala](screenshots/arac-kiralama.png)](screenshots/arac-kiralama-2x.png)<br>**Araç kirala**: anlık toplam tutarla |
+| [![Müsaitlik takvimi](screenshots/musaitlik-takvimi.png)](screenshots/musaitlik-takvimi-2x.png)<br>**Müsaitlik takvimi**: her gün yazı, desen ve renk tonuyla | [![Kiralamalarım](screenshots/kiralamalarim.png)](screenshots/kiralamalarim-2x.png)<br>**Kiralamalarım**: iptal, iade, sözleşme |
+| [![Onay](screenshots/onay-penceresi.png)](screenshots/onay-penceresi-2x.png)<br>**Onay**: kiralama iptal edilmeden önce | [![Şifre değiştir](screenshots/sifre-degistirme.png)](screenshots/sifre-degistirme-2x.png)<br>**Şifre değiştir** |
+| [![Yönetim paneli](screenshots/yonetim-paneli.png)](screenshots/yonetim-paneli-2x.png)<br>**Yönetim paneli**: araçlar ve düzenleme formu | [![Hesaplar](screenshots/hesaplar.png)](screenshots/hesaplar-2x.png)<br>**Hesaplar**: iletişim bilgileri listede maskeli |
+| [![Kiralamalar](screenshots/kiralamalar.png)](screenshots/kiralamalar-2x.png)<br>**Kiralamalar**: tüm aktif kiralamalar, kiracılarıyla | [![Bakım ve hasar kayıtları](screenshots/bakim-kayitlari.png)](screenshots/bakim-kayitlari-2x.png)<br>**Bakım ve hasar kayıtları** |
+| [![Gelir raporu](screenshots/gelir-raporu.png)](screenshots/gelir-raporu-2x.png)<br>**Gelir raporu**: toplamlar; dönemler ve araçlar çubuklarla | [![İlk kurulum](screenshots/ilk-kurulum.png)](screenshots/ilk-kurulum-2x.png)<br>**İlk kurulum**: kurulum anahtarıyla |
 
 ---
 
@@ -142,7 +168,7 @@ artık var olmayan eski uygulama ekranlarını gösteriyordu ve kaldırıldı.
 | Alan | Kullanılan |
 |---|---|
 | Platform | .NET 10 (`net10.0-windows` arayüz, `net10.0` kütüphaneler) |
-| Arayüz | Windows Forms |
+| Arayüz | Windows Forms, kendi teması (açık, koyu, yüksek karşıtlık), monitör başına DPI |
 | Veri erişimi | Entity Framework Core 10 (SQL Server sağlayıcısı) |
 | Veritabanı | Microsoft SQL Server (Express yeterli) |
 | Şifre özeti | PBKDF2-HMAC-SHA256 (`Rfc2898DeriveBytes.Pbkdf2`) |
@@ -162,12 +188,14 @@ AracKiralamaApp/
 │   ├── AracKiralama.Domain/     # Varlıklar (User, Car, Rental, SetupKey) ve repository sözleşmeleri
 │   ├── AracKiralama.Business/   # Giriş, kurulum, araç, kiralama ve hesap servisleri, fiyatlar, Security/ (PBKDF2, kilit, kurulum anahtarı), Validation/ (FluentValidation), Auditing/
 │   ├── AracKiralama.Data/       # EF Core DbContext, yapılandırmalar, Persistence/Migrations/, eski veritabanı yükseltmesi, araç kilitleri, veritabanı saati, demo verisi, repository'ler
-│   └── AracKiralama.UI/         # WinForms ekranları, Infrastructure/ (hatalar, loglama, iletişim kutuları, yazma koruması, resim yükleyici), Program.cs (bileşim kökü)
+│   └── AracKiralama.UI/         # WinForms ekranları, Theming/ (paletler, yazı tipleri, temalı denetimler, araç çizimi), Infrastructure/ (ekran çerçevesi, hatalar, loglama, iletişim kutuları, yazma koruması, resim yükleyici), Program.cs (bileşim kökü)
 ├── tests/
 │   ├── AracKiralama.Business.Tests/  # Doğrulayıcılar, denetim kodları, şifre özeti, kilit, kiralama kuralları, fiyatlar ve sahiplik (Moq)
 │   ├── AracKiralama.Data.Tests/      # SQLite üzerinde servisler; SQL Server üzerinde kiralama yarışları, kurulum anahtarları, kısıtlı oturum ve eski veritabanı yükseltmesi
-│   └── AracKiralama.UI.Tests/        # Yapılandırma, hatalar, loglar, resimler, odak ve yazma korumaları (pencere açılmaz)
-├── assets/                      # Özgün logo, arka plan, giriş resmi, araç yer tutucusu ve simge, SVG kaynaklarıyla
+│   └── AracKiralama.UI.Tests/        # Ekranlar, yerleşim, temalar, yapılandırma, hatalar, loglar, resimler, odak ve yazma korumaları (pencere açılmaz)
+├── tools/Screenshots/           # Simge ve README ekran görüntüleri, hayali bir filoyla pencere açılmadan çizilir
+├── screenshots/                 # 1x ve 2x README görselleri
+├── assets/                      # Özgün logo (logo.svg), simgesi ve 256 piksellik görseli
 ├── docs/
 │   ├── issue-setup-key.sql      # Kurulum anahtarı, veritabanı sahibi çalıştırır
 │   ├── grant-app-login.sql      # Uygulamanın kendi oturumunun yetkileri
@@ -228,6 +256,9 @@ biri olur (sonrakiler öncekileri geçersiz kılar):
      "Seed": {
        "Demo": false
      },
+     "Appearance": {
+       "Theme": "Light"
+     },
      "Rental": {
        "MinRentalDays": 1,
        "MaxRentalDays": 90,
@@ -258,7 +289,8 @@ biri olur (sonrakiler öncekileri geçersiz kılar):
 `MaxAdvanceDays` (0-3650; 0 yalnızca bugün başlayan kiralamalara izin verir) ve `LongRentalDays` (0-3650) ile
 `LongRentalDiscountPercent` (0-90): en az `LongRentalDays` günlük kiralamalar bu indirimi alır; 0 indirimi kapatır.
 Bağlantı dizesi bulunamazsa veya kiralama ayarları geçersizse uygulama sorunu belirten Türkçe bir mesaj gösterip
-kapanır.
+kapanır. `Appearance:Theme` ayarı `Light` (varsayılan), `Dark` ya da `System` olabilir; başka bir değer `Light`
+sayılır ve Windows yüksek karşıtlığı her zaman önceliklidir.
 
 ### 2. Çalıştırma
 
@@ -387,7 +419,7 @@ dotnet test -c Release
 |---|---|---|
 | `tests/AracKiralama.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası (kullanıcı adı 3/32, şifre 8/64, e-posta, telefon, araç alanları, plakalar, kiralama günleri ve tarihleri), korunan eski değerler, denetim kodları, PBKDF2 ve biçim yükseltmesi, kilit, kiralama ve fiyat kuralları, katı Moq taklitleriyle sahiplik ve yönetici denetimleri, oturum sürümleri, bakım girdisi, takvim durumları, gelir toplamları ve sınırları, formüle karşı güvenli CSV, sözleşmenin kodlanması ve CSP |
 | `tests/AracKiralama.Data.Tests` | Entegrasyon | Bellek içi SQLite üzerinde servisler ve repository'ler (çakışma sınırları, en kısa ve en uzun kiralama, kiralama ufku, güne göre iptal veya iade, IDOR cevapları, kilit süresi, yetkisi alınan oturumlar, reddedilen girdinin hiçbir şey yazmaması, bakımın kapattığı günler ve eski sürümler, takvim, gelir ve sözleşme sahiplik denetimleri, rol veya şifre değişikliğiyle biten oturumlar); SQL Server üzerinde kiralama, kilit, bakım ve eski form yarışları, kısa komut zaman aşımında meşgul araç kilidi, kısıtlı oturumla kurulum anahtarları ve tüm yeni özellikler ve eski veritabanı yükseltmesi |
-| `tests/AracKiralama.UI.Tests` | Birim | Örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, resim adresi denetimleri, kilit sonrası odak, yazma korumaları, takvim ayları ve raporlarda son isteğin kazandığı yükleme, tek bakım ve sözleşme kaydı, eski kayıtta yeniden yükleme, yazı tipine göre boyutlanan takvim hücreleri, nötr marka |
+| `tests/AracKiralama.UI.Tests` | Birim | Her ekranın 1024x600, 1366x768 ve 1920x1040 çalışma alanlarında, 1 ile 2 arası yazı boyutlarında ve uzun adlarla sığması (kesilme ve çakışma yok, başlık ve alt bilgi görünür), temalı denetimler, sekme sırası, pencere içi iletiler, palet karşıtlığı, sistem renkleriyle yüksek karşıtlık ve ekranlar açıkken geçişi, kart ve takvim yerleşimi, araç çizimi, örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, resim adresi denetimleri, kilit sonrası odak, yazma korumaları, takvim ayları ve raporlarda son isteğin kazandığı yükleme, tek bakım ve sözleşme kaydı, eski kayıtta yeniden yükleme, yazı tipine göre boyutlanan takvim hücreleri, nötr marka |
 
 SQL Server testleri `ARAC_TEST_SQLSERVER` içindeki sunucuda geçici veritabanları kullanır (varsayılan: Windows
 kimlik doğrulamalı yerel SQL Express). `ARAC_SKIP_SQL_TESTS=1` tanımlıysa veya sunucuya ulaşılamıyorsa atlanır;
@@ -437,8 +469,12 @@ Hedef makinede .NET 10 Desktop Runtime gerekir. `appsettings.json` dosyasını `
   böylece kullanıcı her seferinde tek bir mesaj görür; araç doğrulayıcısı her geçersiz alanı bildirir.
 - Yeni yazma düğmeleri `ExclusiveOperation` üzerinden geçmeli ve odağı `FocusAfterUnlock` ile taşımalıdır; bir
   seçimle tetiklenen yüklemeler yalnızca son cevabın gösterilmesi için `RequestSequence` kullanmalıdır ve kodda veri
-  bağlamak bir kullanıcı seçimi sayılmamalıdır. Mesaj kutuları `Dialogs` veya `IUserPrompts` üzerinden açılır, hiçbir
+  bağlamak bir kullanıcı seçimi sayılmamalıdır. Bir ekranın sonuçları ve retleri `IUserPrompts` üzerinden pencere içi
+  ileti şeridine gider; sorular ve ekran dışındaki iletiler `Dialogs` (temalı ileti penceresi) üzerinden açılır, hiçbir
   zaman doğrudan `MessageBox` ile açılmaz.
+- Yeni ekranlar `AppDialog`'dan türer ve `FormLayout` ile `Theming/` içindeki temalı denetimlerle kurulur; renkler sabit
+  değer değil palet rollerinden gelir ve yüksek karşıtlıkta seçili ya da üzerine gelinen öğelere hiçbir yazı rengi
+  verilmez. `tools/Screenshots`, `Screens.All` listesine eklenen yeni ekranı da çizer.
 - Her yetkili servis çağrısı, hesabın rolünü veritabanından okuyan `AccessGuard` üzerinden geçer; repository
   yazmaları işlemi yapan hesabı alır ve yeniden denetler.
 - Denetim olayları yalnızca olay türünü ve rolü taşır; bunlara kimlik belirten veri eklemeyin.

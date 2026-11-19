@@ -1,5 +1,5 @@
-using System.ComponentModel;
 using AracKiralama.Domain.Entities;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI.Infrastructure;
 
@@ -86,47 +86,21 @@ internal sealed class CarFilterBoxes
     private static string? Selected(ComboBox box) => (box.SelectedItem as FilterChoice)?.Value;
 }
 
-/// <summary>A car row of the admin's car grid; the column headers are the original column names.</summary>
-internal sealed class CarRow(Car car)
+/// <summary>
+/// A car in the admin's list. The text (<see cref="ToString"/>) is what screen readers and copying use;
+/// <see cref="Row"/> is how the themed list draws it: the name, the plate and details below it, and whether the
+/// car is open for rental as a pill that a long name never hides.
+/// </summary>
+internal sealed record CarItem(Car Car)
 {
-    [Browsable(false)]
-    public Car Car { get; } = car;
+    public override string ToString() => $"{Car.Brand} {Car.Model} ({Car.Plate}) - {Describe(Car)}";
 
-    [DisplayName("AracID")]
-    public int Id => Car.Id;
-
-    [DisplayName("Marka")]
-    public string Brand => Car.Brand;
-
-    [DisplayName("Model")]
-    public string Model => Car.Model;
-
-    [DisplayName("Yil")]
-    public int Year => Car.Year;
-
-    [DisplayName("VitesTipi")]
-    public string Transmission => Car.Transmission;
-
-    [DisplayName("YakitTipi")]
-    public string FuelType => Car.FuelType;
-
-    [DisplayName("Km")]
-    public int Mileage => Car.Mileage;
-
-    [DisplayName("Renk")]
-    public string Color => Car.Color;
-
-    [DisplayName("Plaka")]
-    public string Plate => Car.Plate;
-
-    [DisplayName("GunlukUcret")]
-    public string DailyPrice => DisplayFormat.MoneyInput(Car.DailyPrice);
-
-    [DisplayName("Durum")]
-    public string Status => Describe(Car);
-
-    [DisplayName("Image")]
-    public string ImageUrl => Car.ImageUrl ?? string.Empty;
+    public ListRow Row() => new(
+        Car.Brand + " " + Car.Model,
+        string.Join(" · ", new[] { Car.Plate, CarCards.Describe(Car), DisplayFormat.Money(Car.DailyPrice) + " / gün" }.Where(p => !string.IsNullOrWhiteSpace(p))),
+        RowTone.Neutral,
+        Describe(Car),
+        Car.IsListed ? RowTone.Neutral : RowTone.Warning);
 
     /// <summary>Whether customers can book the car; which days are taken is shown by the rentals.</summary>
     public static string Describe(Car car)
@@ -137,28 +111,23 @@ internal sealed class CarRow(Car car)
 }
 
 /// <summary>
-/// An account row of the admin's account grid. The password is never shown, and the e-mail and phone are
-/// masked in the list; the full values appear only in the edit fields of the account the admin picks.
+/// An account in the admin's list. The password is never shown, and the e-mail and phone are masked in the
+/// list; the full values appear only in the edit fields of the account the admin picks.
 /// </summary>
-internal sealed class UserRow(UserSummary user)
+internal sealed record AccountItem(UserSummary User)
 {
-    [Browsable(false)]
-    public UserSummary User { get; } = user;
+    public override string ToString() => $"{User.UserName} ({RoleChoice.Describe(User.Role)})";
 
-    [DisplayName("KullaniciID")]
-    public int Id => User.Id;
-
-    [DisplayName("KullaniciAdi")]
-    public string UserName => User.UserName;
-
-    [DisplayName("Eposta")]
-    public string Email => PersonalData.MaskEmail(User.Email);
-
-    [DisplayName("Telefon")]
-    public string Phone => PersonalData.MaskPhone(User.Phone);
-
-    [DisplayName("Rol")]
-    public string Role => RoleChoice.Describe(User.Role);
+    public ListRow Row()
+    {
+        var contact = string.Join(" · ", new[] { PersonalData.MaskEmail(User.Email), PersonalData.MaskPhone(User.Phone) }.Where(p => p.Length > 0));
+        return new ListRow(
+            User.UserName,
+            contact.Length > 0 ? contact : "İletişim bilgisi yok",
+            RowTone.Neutral,
+            RoleChoice.Describe(User.Role),
+            User.Role == UserRole.Admin ? RowTone.Accent : RowTone.Neutral);
+    }
 }
 
 /// <summary>Masks contact data in lists, so a glance at the screen does not reveal it.</summary>

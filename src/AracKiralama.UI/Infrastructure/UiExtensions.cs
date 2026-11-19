@@ -6,9 +6,11 @@ internal static class UiExtensions
 {
     /// <summary>
     /// Runs an asynchronous UI action with a wait cursor. Business rule violations are shown as
-    /// warnings; anything else is reported through <see cref="ErrorReporter"/>.
+    /// warnings; anything else is reported through <see cref="ErrorReporter"/>, inline on a screen with a
+    /// message strip.
     /// </summary>
-    public static async Task RunAsync(this Form form, Func<Task> action)
+    /// <param name="reportTo">Where failures are reported instead of <paramref name="form"/>, for a window that closes when its action fails.</param>
+    public static async Task RunAsync(this Form form, Func<Task> action, IWin32Window? reportTo = null)
     {
         ArgumentNullException.ThrowIfNull(form);
         ArgumentNullException.ThrowIfNull(action);
@@ -22,7 +24,7 @@ internal static class UiExtensions
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            ErrorReporter.Show(ex, form);
+            ErrorReporter.Show(ex, reportTo ?? form);
         }
         finally
         {
@@ -32,7 +34,8 @@ internal static class UiExtensions
 
     /// <summary>
     /// Like <see cref="RunAsync"/>, but through <paramref name="operation"/>: while a run is pending a new
-    /// call is ignored and <paramref name="controls"/> stay disabled, so a write cannot be started twice.
+    /// call is ignored and <paramref name="controls"/> stay disabled, so a write cannot be started twice. A run
+    /// that starts clears the previous inline message of the screen.
     /// </summary>
     public static Task<bool> RunExclusiveAsync(
         this Form form,
@@ -44,7 +47,13 @@ internal static class UiExtensions
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(action);
 
-        return operation.RunAsync(() => form.RunAsync(action), controls);
+        return operation.RunAsync(
+            () =>
+            {
+                (form as IStatusSurface)?.ClearStatus();
+                return form.RunAsync(action);
+            },
+            controls);
     }
 
     /// <summary>Lets only digits (and editing keys) be typed.</summary>
@@ -120,36 +129,10 @@ internal static class UiExtensions
 
     /// <summary>
     /// Shows a car's picture through <see cref="CarPictures"/>: a public http or https address is loaded
-    /// in the background within the time and size limits, anything else (or a failed load) shows the
-    /// application's own placeholder.
+    /// in the background within the time and size limits; anything else (or a failed load) leaves the
+    /// picture empty, and a <see cref="Theming.VehiclePicture"/> then draws the application's own vehicle art.
     /// </summary>
     public static void ShowCarPicture(this PictureBox pictureBox, string? imageUrl) => CarPictures.Show(pictureBox, imageUrl);
-    /// <summary>
-    /// Read-only list settings of the original grids. Under high contrast the system colors stay, so a
-    /// selected row never gets a fixed light text color on the highlight.
-    /// </summary>
-    public static void UseReadOnlyList(this DataGridView grid)
-    {
-        ArgumentNullException.ThrowIfNull(grid);
-
-        grid.ReadOnly = true;
-        grid.AllowUserToAddRows = false;
-        grid.AllowUserToDeleteRows = false;
-        grid.MultiSelect = false;
-        grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        if (SystemInformation.HighContrast)
-        {
-            grid.DefaultCellStyle.ForeColor = SystemColors.WindowText;
-            grid.DefaultCellStyle.BackColor = SystemColors.Window;
-        }
-        else
-        {
-            grid.DefaultCellStyle.ForeColor = Color.Black;
-        }
-
-        grid.DefaultCellStyle.SelectionForeColor = SystemColors.HighlightText;
-        grid.DefaultCellStyle.SelectionBackColor = SystemColors.Highlight;
-    }
 
     /// <summary>Replaces the items of a combo box, keeping the update to a single repaint.</summary>
     public static void ReplaceItems<T>(this ComboBox comboBox, IEnumerable<T> items)
@@ -169,6 +152,27 @@ internal static class UiExtensions
         finally
         {
             comboBox.EndUpdate();
+        }
+    }
+
+    /// <summary>Replaces the items of a list, keeping the update to a single repaint. Selects nothing.</summary>
+    public static void ReplaceItems<T>(this ListBox listBox, IEnumerable<T> items)
+    {
+        ArgumentNullException.ThrowIfNull(listBox);
+        ArgumentNullException.ThrowIfNull(items);
+
+        listBox.BeginUpdate();
+        try
+        {
+            listBox.Items.Clear();
+            foreach (var item in items)
+            {
+                listBox.Items.Add(item!);
+            }
+        }
+        finally
+        {
+            listBox.EndUpdate();
         }
     }
 }

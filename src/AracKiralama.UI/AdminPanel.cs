@@ -4,20 +4,56 @@ using AracKiralama.Business.Services;
 using AracKiralama.Business.Validation;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI
 {
-    /// <summary>The admin's car management: list, add, change and delete cars, and the other admin panels.</summary>
-    public partial class AdminPanel : Form, ISignOutPanel
+    /// <summary>The admin's car management: list, add, change and delete cars, and the other admin screens.</summary>
+    public sealed class AdminPanel : AppDialog, ISignOutPanel
     {
         private readonly ICarService _cars;
         private readonly IFormFactory _forms;
         private readonly UserSession _session;
         private readonly ExclusiveOperation _write = new();
         private readonly RequestSequence _loads = new();
+        private readonly Dictionary<string, Control> _fields;
         private bool _binding;
 
+        private readonly Label lblGreeting = new() { Name = nameof(lblGreeting), AutoSize = true, UseMnemonic = false, TextAlign = ContentAlignment.MiddleRight };
+        private readonly Label lblCarCount = FormLayout.Hint(string.Empty);
+        private readonly ThemedButton btnRefresh = FormLayout.Button(nameof(btnRefresh), "Yenile", ButtonKind.Subtle, Glyphs.Refresh);
+        private readonly ThemedListBox lstCars = new() { Name = nameof(lstCars), AccessibleName = "Araçlar", EmptyText = "Henüz araç yok. Sağdaki formdan ilk aracı ekleyin." };
+        private readonly VehiclePicture picCar = new() { Name = nameof(picCar), Size = new Size(132, 80) };
+        private readonly Label lblSelection = FormLayout.Text(nameof(lblSelection));
+        private readonly Label lblSelectionDetail = FormLayout.Hint(string.Empty);
+        private readonly TextBox txtBrand = new() { Name = nameof(txtBrand), MaxLength = InputRules.BrandMaxLength };
+        private readonly TextBox txtModel = new() { Name = nameof(txtModel), MaxLength = InputRules.ModelMaxLength };
+        private readonly ThemedComboBox cmbYear = FormLayout.Picker(nameof(cmbYear), 96);
+        private readonly ThemedComboBox cmbTransmission = FormLayout.Picker(nameof(cmbTransmission), 120);
+        private readonly ThemedComboBox cmbFuelType = FormLayout.Picker(nameof(cmbFuelType), 120);
+        private readonly TextBox txtMileage = new() { Name = nameof(txtMileage), MaxLength = 7 };
+        private readonly TextBox txtColor = new() { Name = nameof(txtColor), MaxLength = InputRules.ColorMaxLength };
+        private readonly TextBox txtPlate = new() { Name = nameof(txtPlate), MaxLength = InputRules.PlateMaxLength, CharacterCasing = CharacterCasing.Upper };
+        private readonly TextBox txtDailyPrice = new() { Name = nameof(txtDailyPrice), MaxLength = 12 };
+        private readonly TextBox txtImageUrl = new() { Name = nameof(txtImageUrl), MaxLength = InputRules.ImageUrlMaxLength, PlaceholderText = "https://… (isteğe bağlı)" };
+        private readonly ThemedCheckBox chkListed = new() { Name = nameof(chkListed), Text = "Kiralamaya açık", Checked = true };
+        private readonly ThemedButton btnAddCar = FormLayout.Button(nameof(btnAddCar), "Araç Ekle", ButtonKind.Secondary, Glyphs.Add);
+        private readonly ThemedButton btnUpdateCar = FormLayout.Button(nameof(btnUpdateCar), "Aracı Güncelle", ButtonKind.Primary, Glyphs.Save);
+        private readonly ThemedButton btnDeleteCar = FormLayout.Button(nameof(btnDeleteCar), "Aracı Sil", ButtonKind.Danger, Glyphs.Delete);
+        private readonly ThemedButton btnCalendar = FormLayout.Button(nameof(btnCalendar), "Müsaitlik Takvimi", ButtonKind.Subtle, Glyphs.Calendar);
+        private readonly ThemedButton btnMaintenance = FormLayout.Button(nameof(btnMaintenance), "Bakım / Hasar Kayıtları", ButtonKind.Subtle, Glyphs.Repair);
+        private readonly ThemedButton btnRentals = FormLayout.Button(nameof(btnRentals), "Kiralamalar", ButtonKind.Secondary, Glyphs.List);
+        private readonly ThemedButton btnUsers = FormLayout.Button(nameof(btnUsers), "Hesaplar", ButtonKind.Secondary, Glyphs.People);
+        private readonly ThemedButton btnRevenue = FormLayout.Button(nameof(btnRevenue), "Gelir Raporu", ButtonKind.Secondary, Glyphs.Chart);
+        private readonly ThemedButton btnSignOut = FormLayout.Button(nameof(btnSignOut), "Oturumu Kapat", ButtonKind.Secondary, Glyphs.SignOut);
+
         public AdminPanel(ICarService cars, IFormFactory forms, UserSession session)
+            : base(
+                "Yönetim paneli",
+                "Araçları ekleyin, güncelleyin ve silin; kiralamalara, hesaplara ve gelir raporuna buradan geçin.",
+                Glyphs.Admin,
+                new Size(1180, 700),
+                new Size(900, 560))
         {
             ArgumentNullException.ThrowIfNull(cars);
             ArgumentNullException.ThrowIfNull(forms);
@@ -26,74 +62,67 @@ namespace AracKiralama.UI
             _cars = cars;
             _forms = forms;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
 
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
+            var years = new List<string>();
             for (var year = DateTime.Today.Year + 1; year >= 1990; year--)
             {
-                cmbYear.Items.Add(year.ToString(CultureInfo.InvariantCulture));
+                years.Add(year.ToString(CultureInfo.InvariantCulture));
             }
 
-            cmbTransmission.DropDownStyle = ComboBoxStyle.DropDownList;
+            _years = years;
+            cmbYear.ReplaceItems(years);
             cmbTransmission.ReplaceItems(InputRules.Transmissions);
-            cmbFuelType.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbFuelType.ReplaceItems(InputRules.FuelTypes);
-            txtBrand.MaxLength = InputRules.BrandMaxLength;
-            txtModel.MaxLength = InputRules.ModelMaxLength;
-            txtColor.MaxLength = InputRules.ColorMaxLength;
-            txtPlate.MaxLength = InputRules.PlateMaxLength;
-            txtPlate.CharacterCasing = CharacterCasing.Upper;
-            txtImageUrl.MaxLength = InputRules.ImageUrlMaxLength;
-            txtMileage.MaxLength = 7;
             txtMileage.AcceptDigitsOnly();
-            txtDailyPrice.MaxLength = 12;
             txtDailyPrice.AcceptMoneyOnly();
-            dataGridView1.UseReadOnlyList();
-            btnUpdateCar.Enabled = false;
-
-            // The car operations below the picture: the calendar and the maintenance log of the car in the
-            // form, and the revenue report. They size themselves from the font.
-            btnCalendar = new Button { Name = "btnCalendar", Text = "Müsaitlik Takvimi", AutoSize = true, Enabled = false };
-            btnMaintenance = new Button { Name = "btnMaintenance", Text = "Bakım / Hasar Kayıtları", AutoSize = true, Enabled = false };
-            btnRevenue = new Button { Name = "btnRevenue", Text = "Gelir Raporu", AutoSize = true };
-            btnCalendar.Click += (_, _) => OpenForSelectedCar<AvailabilityCalendarForm>();
-            btnMaintenance.Click += (_, _) => OpenForSelectedCar<MaintenanceForm>();
-            btnRevenue.Click += (_, _) =>
+            BuildLayout();
+            _fields = new Dictionary<string, Control>(StringComparer.Ordinal)
             {
-                using var report = _forms.Create<RevenueReportForm>(_session);
-                report.ShowDialog(this);
+                [nameof(CarInput.Brand)] = txtBrand,
+                [nameof(CarInput.Model)] = txtModel,
+                [nameof(CarInput.Year)] = cmbYear,
+                [nameof(CarInput.Transmission)] = cmbTransmission,
+                [nameof(CarInput.FuelType)] = cmbFuelType,
+                [nameof(CarInput.Mileage)] = txtMileage,
+                [nameof(CarInput.Color)] = txtColor,
+                [nameof(CarInput.Plate)] = txtPlate,
+                [nameof(CarInput.DailyPrice)] = txtDailyPrice,
+                [nameof(CarInput.ImageUrl)] = txtImageUrl,
             };
-            var operations = new FlowLayoutPanel
-            {
-                Name = "pnlOperations",
-                Location = new Point(picCar.Left, picCar.Bottom + 8),
-                Size = new Size(picCar.Width, btnUpdateCar.Top - picCar.Bottom - 16),
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = true,
-                AutoScroll = true,
-            };
-            operations.Controls.AddRange([btnCalendar, btnMaintenance, btnRevenue]);
-            Controls.Add(operations);
+            ClearForm();
+            lblGreeting.Text = AppText.DisplayName(session.UserName) + Environment.NewLine + "Yönetici hesabı";
 
             // Both need the car in the form, exactly like "Aracı Güncelle".
             btnUpdateCar.EnabledChanged += (_, _) => btnCalendar.Enabled = btnMaintenance.Enabled = btnUpdateCar.Enabled;
+            btnCalendar.Enabled = btnMaintenance.Enabled = btnUpdateCar.Enabled;
+
+            Load += async (_, _) => await this.RunAsync(LoadCarsAsync);
+            lstCars.SelectedIndexChanged += (_, _) =>
+            {
+                // Binding new rows is not a choice of the user and changes nothing in the form.
+                if (!_binding && lstCars.SelectedItem is CarItem item)
+                {
+                    SelectCar(item.Car);
+                }
+            };
+            btnRefresh.Click += async (_, _) => await this.RunAsync(LoadCarsAsync);
+            btnAddCar.Click += async (_, _) => await AddAsync();
+            btnUpdateCar.Click += async (_, _) => await UpdateAsync();
+            btnDeleteCar.Click += async (_, _) => await DeleteAsync();
+            btnCalendar.Click += (_, _) => OpenForSelectedCar<AvailabilityCalendarForm>();
+            btnMaintenance.Click += (_, _) => OpenForSelectedCar<MaintenanceForm>();
+            btnRentals.Click += (_, _) => OpenRentals();
+            btnUsers.Click += (_, _) => OpenAccounts();
+            btnRevenue.Click += (_, _) => OpenRevenue();
+            btnSignOut.Click += (_, _) => SignOut();
         }
 
-        private readonly Button btnCalendar;
-        private readonly Button btnMaintenance;
-        private readonly Button btnRevenue;
+        private readonly IReadOnlyList<string> _years;
 
         public bool SignedOut { get; private set; }
 
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
+        /// <summary>Why the session ended, for the sign-in screen; set when the admin changed their own role or password.</summary>
+        public string? SignOutNotice { get; private set; }
 
         /// <summary>The car whose details are in the form, or <see langword="null"/> when a new one is entered.</summary>
         internal int? SelectedCarId { get; private set; }
@@ -103,29 +132,52 @@ namespace AracKiralama.UI
 
         internal IReadOnlyList<Car> ShownCars { get; private set; } = [];
 
-        /// <summary>Loads the car grid; only the latest request is shown. Binding the rows selects nothing.</summary>
+        /// <summary>The message a refused field shows, or <see langword="null"/>; for tests.</summary>
+        internal string? FieldError(string field) => _fields.TryGetValue(field, out var control) ? ErrorOf(control) : null;
+
+        /// <summary>
+        /// Loads the car list; only the latest request is shown. Binding the rows is not a choice of the user: it
+        /// changes nothing in the form and selects only the car that is already in the form.
+        /// </summary>
         internal async Task LoadCarsAsync()
         {
             var request = _loads.Next();
-            var cars = await _cars.GetAllAsync(_session);
-            if (!_loads.IsLatest(request) || IsDisposed)
-            {
-                return;
-            }
-
-            ShownCars = cars;
-            _binding = true;
+            lstCars.IsLoading = true;
             try
             {
-                dataGridView1.DataSource = cars.Select(c => new CarRow(c)).ToList();
-                dataGridView1.ClearSelection();
+                var cars = await _cars.GetAllAsync(_session);
+                if (!_loads.IsLatest(request) || IsDisposed)
+                {
+                    return;
+                }
+
+                ShownCars = cars;
+                _binding = true;
+                try
+                {
+                    lstCars.ReplaceItems(cars.Select(c => new CarItem(c)));
+                    lstCars.ClearSelected();
+                    var index = SelectedCarId is { } id ? cars.ToList().FindIndex(c => c.Id == id) : -1;
+                    if (index >= 0)
+                    {
+                        lstCars.SelectedIndex = index;
+                    }
+                }
+                finally
+                {
+                    _binding = false;
+                }
+
+                lblCarCount.Text = string.Create(CultureInfo.CurrentCulture, $"{cars.Count} araç, {cars.Count(c => c.IsListed)} tanesi kiralamaya açık");
+                btnUpdateCar.Enabled = SelectedCarId is not null;
             }
             finally
             {
-                _binding = false;
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    lstCars.IsLoading = false;
+                }
             }
-
-            btnUpdateCar.Enabled = SelectedCarId is not null;
         }
 
         /// <summary>Shows a car's details in the form, as a click on its row does.</summary>
@@ -133,23 +185,23 @@ namespace AracKiralama.UI
         {
             ArgumentNullException.ThrowIfNull(car);
 
-            errorProvider1.Clear();
+            ClearFieldErrors();
             SelectedCarId = car.Id;
             SelectedCarVersion = car.Version;
-            txtId.Text = car.Id.ToString(CultureInfo.InvariantCulture);
             txtBrand.Text = car.Brand;
             txtModel.Text = car.Model;
-            cmbYear.Text = car.Year.ToString(CultureInfo.InvariantCulture);
+            ShowChoice(cmbYear, _years, car.Year.ToString(CultureInfo.InvariantCulture));
             ShowChoice(cmbTransmission, InputRules.Transmissions, car.Transmission);
             ShowChoice(cmbFuelType, InputRules.FuelTypes, car.FuelType);
             txtMileage.Text = car.Mileage.ToString(CultureInfo.InvariantCulture);
             txtColor.Text = car.Color;
             txtPlate.Text = car.Plate;
             txtDailyPrice.Text = DisplayFormat.MoneyInput(car.DailyPrice);
-            txtStatus.Text = CarRow.Describe(car);
             chkListed.Checked = car.IsListed;
             txtImageUrl.Text = car.ImageUrl ?? string.Empty;
-            picCar.ShowCarPicture(car.ImageUrl);
+            picCar.ShowCar(car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
+            lblSelection.Text = car.Brand + " " + car.Model;
+            lblSelectionDetail.Text = string.Create(CultureInfo.CurrentCulture, $"Araç no {car.Id} · {CarItem.Describe(car)}");
             btnUpdateCar.Enabled = true;
         }
 
@@ -169,9 +221,9 @@ namespace AracKiralama.UI
             await WriteAsync(async () =>
             {
                 await _cars.AddAsync(_session, ReadInput());
-                Prompts.Inform("Araç başarıyla eklendi.");
                 ClearForm();
                 await LoadCarsAsync();
+                Prompts.Inform("Araç başarıyla eklendi.");
             });
         }
 
@@ -206,12 +258,13 @@ namespace AracKiralama.UI
                     throw;
                 }
 
-                Prompts.Inform("Araç başarıyla güncellendi!");
                 await LoadCarsAsync();
                 if (ShownCars.FirstOrDefault(c => c.Id == id) is { } updated)
                 {
                     SelectCar(updated);
                 }
+
+                Prompts.Inform("Araç başarıyla güncellendi!");
             });
         }
 
@@ -240,16 +293,18 @@ namespace AracKiralama.UI
                     throw;
                 }
 
-                Prompts.Inform("Araç başarıyla silindi.");
                 ClearForm();
                 await LoadCarsAsync();
+                Prompts.Inform("Araç başarıyla silindi.");
             });
         }
 
-        protected override async void OnLoad(EventArgs e)
+        /// <summary>Closes the panel and returns to the sign-in screen.</summary>
+        internal void SignOut(string? notice = null)
         {
-            base.OnLoad(e);
-            await this.RunAsync(LoadCarsAsync);
+            SignedOut = true;
+            SignOutNotice = notice;
+            Close();
         }
 
         /// <summary>
@@ -266,8 +321,8 @@ namespace AracKiralama.UI
         }
 
         /// <summary>
-        /// Runs a car write exclusively; invalid fields are marked as the original form marked empty ones.
-        /// The update button follows the selection the write left behind, not the state before it.
+        /// Runs a car write exclusively; refused fields are marked next to their inputs. The update button
+        /// follows the selection the write left behind, not the state before it.
         /// </summary>
         private async Task<bool> WriteAsync(Func<Task> write)
         {
@@ -275,7 +330,7 @@ namespace AracKiralama.UI
                 _write,
                 async () =>
                 {
-                    errorProvider1.Clear();
+                    ClearFieldErrors();
                     try
                     {
                         await write();
@@ -283,7 +338,7 @@ namespace AracKiralama.UI
                     catch (BusinessRuleException ex) when (ex.FieldErrors.Count > 0)
                     {
                         MarkFields(ex.FieldErrors);
-                        _write.FocusAfterUnlock(FieldControl(ex.FieldErrors.Keys.First()));
+                        _write.FocusAfterUnlock(FocusTarget(ex.FieldErrors.Keys.First()));
                         throw;
                     }
                 },
@@ -302,7 +357,7 @@ namespace AracKiralama.UI
         private CarInput ReadInput() => new(
             txtBrand.Text,
             txtModel.Text,
-            cmbYear.Text,
+            cmbYear.SelectedItem as string ?? string.Empty,
             cmbTransmission.SelectedItem as string,
             cmbFuelType.SelectedItem as string,
             txtMileage.Text,
@@ -316,25 +371,40 @@ namespace AracKiralama.UI
         {
             foreach (var (field, message) in errors)
             {
-                if (FieldControl(field) is { } control)
+                if (_fields.TryGetValue(field, out var control))
                 {
-                    errorProvider1.SetError(control, message);
+                    SetError(control, message);
                 }
             }
         }
 
-        private Control? FieldControl(string field) => field switch
+        private void ClearFieldErrors()
         {
-            nameof(CarInput.Brand) => txtBrand,
-            nameof(CarInput.Model) => txtModel,
-            nameof(CarInput.Year) => cmbYear,
-            nameof(CarInput.Transmission) => cmbTransmission,
-            nameof(CarInput.FuelType) => cmbFuelType,
-            nameof(CarInput.Mileage) => txtMileage,
-            nameof(CarInput.Color) => txtColor,
-            nameof(CarInput.Plate) => txtPlate,
-            nameof(CarInput.DailyPrice) => txtDailyPrice,
-            nameof(CarInput.ImageUrl) => txtImageUrl,
+            foreach (var control in _fields.Values)
+            {
+                SetError(control, null);
+            }
+        }
+
+        private Control? FocusTarget(string field) => _fields.GetValueOrDefault(field);
+
+        private static void SetError(Control control, string? message)
+        {
+            switch (control)
+            {
+                case TextBox { Parent: TextField field }:
+                    field.Error = message;
+                    break;
+                case ThemedComboBox combo:
+                    combo.Error = message;
+                    break;
+            }
+        }
+
+        private static string? ErrorOf(Control control) => control switch
+        {
+            TextBox { Parent: TextField field } => field.Error,
+            ThemedComboBox combo => combo.Error,
             _ => null,
         };
 
@@ -358,25 +428,33 @@ namespace AracKiralama.UI
         {
             SelectedCarId = null;
             SelectedCarVersion = 0;
-            dataGridView1.ClearSelection();
-            errorProvider1.Clear();
-            foreach (var box in new[] { txtId, txtBrand, txtModel, txtMileage, txtColor, txtPlate, txtDailyPrice, txtStatus, txtImageUrl })
+            _binding = true;
+            try
+            {
+                lstCars.ClearSelected();
+            }
+            finally
+            {
+                _binding = false;
+            }
+
+            ClearFieldErrors();
+            foreach (var box in new[] { txtBrand, txtModel, txtMileage, txtColor, txtPlate, txtDailyPrice, txtImageUrl })
             {
                 box.Clear();
             }
 
-            cmbYear.SelectedIndex = -1;
-            cmbYear.Text = string.Empty;
+            ShowChoice(cmbYear, _years, null);
             ShowChoice(cmbTransmission, InputRules.Transmissions, null);
             ShowChoice(cmbFuelType, InputRules.FuelTypes, null);
             chkListed.Checked = true;
-            picCar.ShowCarPicture(null);
+            picCar.ShowCar(null, null, null, "Yeni araç");
+            lblSelection.Text = "Yeni araç";
+            lblSelectionDetail.Text = "Bilgileri girip \"Araç Ekle\" ile kaydedin.";
             btnUpdateCar.Enabled = false;
         }
 
-        private async void btnRefresh_Click(object? sender, EventArgs e) => await this.RunAsync(LoadCarsAsync);
-
-        private void btnUsers_Click(object? sender, EventArgs e)
+        private void OpenAccounts()
         {
             bool sessionEnded;
             using (var panel = _forms.Create<UserManagementPanel>(_session))
@@ -388,15 +466,20 @@ namespace AracKiralama.UI
             if (sessionEnded)
             {
                 // The admin changed their own role or password: back to the sign-in screen.
-                SignOut();
+                SignOut(UserManagementPanel.OwnSessionEndedMessage);
             }
         }
 
-        /// <summary>Closes the panel and returns to the sign-in screen.</summary>
-        internal void SignOut()
+        private void OpenRentals()
         {
-            SignedOut = true;
-            Close();
+            using var panel = _forms.Create<RentedCarsPanel>(_session);
+            panel.ShowDialog(this);
+        }
+
+        private void OpenRevenue()
+        {
+            using var report = _forms.Create<RevenueReportForm>(_session);
+            report.ShowDialog(this);
         }
 
         /// <summary>Opens a form of the car in the form (calendar or maintenance log); nothing without a car.</summary>
@@ -412,35 +495,69 @@ namespace AracKiralama.UI
             form.ShowDialog(this);
         }
 
-        private void btnRentals_Click(object? sender, EventArgs e)
+        private void BuildLayout()
         {
-            using var panel = _forms.Create<RentedCarsPanel>(_session);
-            panel.ShowDialog(this);
+            Name = nameof(AdminPanel);
+            var p = Theme.Current;
+            lblGreeting.Font = Theme.Fonts.Body;
+            lblGreeting.ForeColor = p.TextSecondary;
+            SetHeaderAside(lblGreeting);
+
+            // The cars: a count, the refresh and the list.
+            lblCarCount.Name = nameof(lblCarCount);
+            btnRefresh.Margin = Padding.Empty;
+            var toolbar = FormLayout.Bar("carToolbar", (lblCarCount, true), (btnRefresh, false));
+            toolbar.Margin = new Padding(0, 0, 0, Spacing.S);
+            lstCars.Describe = item => item is CarItem car ? car.Row() : new ListRow(item.ToString() ?? string.Empty);
+            lstCars.LoadingText = "Araçlar yükleniyor…";
+            var carsCard = FormLayout.Card("carsCard", "Araçlar", FormLayout.Page("carsPage", (toolbar, false), (lstCars, true)));
+
+            // The car in the form: its picture and name, its fields and the actions on it.
+            lblSelection.Font = Theme.Fonts.Subtitle;
+            lblSelectionDetail.Name = nameof(lblSelectionDetail);
+            picCar.Margin = new Padding(0, 0, Spacing.M, 0);
+            var selectionText = FormLayout.Stack("selectionText", lblSelection, lblSelectionDetail);
+            var selection = FormLayout.Bar("selectionRow", (picCar, false), (selectionText, true));
+            selectionText.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            selection.Margin = new Padding(0, 0, 0, Spacing.M);
+            var row1 = FormLayout.FieldRow(
+                "carRow1",
+                (FormLayout.Field("&Marka", FormLayout.Input(txtBrand)), 50),
+                (FormLayout.Field("M&odel", FormLayout.Input(txtModel)), 50));
+            var row2 = FormLayout.FieldRow(
+                "carRow2",
+                (FormLayout.Field("&Yıl", cmbYear), 0),
+                (FormLayout.Field("&Vites", cmbTransmission), 50),
+                (FormLayout.Field("Ya&kıt", cmbFuelType), 50));
+            var row3 = FormLayout.FieldRow(
+                "carRow3",
+                (FormLayout.Field("K&m", FormLayout.Input(txtMileage)), 30),
+                (FormLayout.Field("&Renk", FormLayout.Input(txtColor)), 35),
+                (FormLayout.Field("&Plaka", FormLayout.Input(txtPlate)), 35));
+            var row4 = FormLayout.FieldRow(
+                "carRow4",
+                (FormLayout.Field("&Günlük ücret (TL)", FormLayout.Input(txtDailyPrice)), 40),
+                (FormLayout.Field("Resim &adresi", FormLayout.Input(txtImageUrl)), 60));
+            chkListed.Margin = new Padding(0, 0, 0, Spacing.M);
+            chkListed.Anchor = AnchorStyles.Left | AnchorStyles.Top;
+            btnAddCar.Margin = btnUpdateCar.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnDeleteCar.Margin = Padding.Empty;
+            var actions = FormLayout.Bar("carActions", (btnAddCar, false), (btnUpdateCar, false), (FormLayout.Spacer("carActionsSpacer"), true), (btnDeleteCar, false));
+            btnCalendar.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnMaintenance.Margin = Padding.Empty;
+            var operations = FormLayout.Bar("pnlOperations", (btnCalendar, false), (btnMaintenance, false), (FormLayout.Spacer("operationsSpacer"), true));
+            operations.Margin = new Padding(0, Spacing.M, 0, 0);
+            var carForm = FormLayout.Stack("carForm", selection, row1, row2, row3, row4, chkListed, actions, operations);
+            chkListed.Dock = DockStyle.None;
+            var carCard = FormLayout.Card("carCard", "Araç bilgileri", carForm, fill: false);
+            carCard.Margin = Padding.Empty;
+
+            Content.Controls.Add(FormLayout.Columns("layout", carsCard, 48, FormLayout.Page("formColumn", (carCard, false))));
+
+            CancelButton = btnSignOut;
+            SetFooterNote("Geçmişi olan bir aracı silmek yerine kiralamaya kapatın.");
+            SetFooterButtons(btnRentals, btnUsers, btnRevenue, btnSignOut);
+            FinishLayout();
         }
-
-        private void dataGridView1_CellClick(object? sender, DataGridViewCellEventArgs e)
-        {
-            if (e.RowIndex >= 0 && dataGridView1.Rows[e.RowIndex].DataBoundItem is CarRow row)
-            {
-                SelectCar(row.Car);
-            }
-        }
-
-        private void dataGridView1_SelectionChanged(object? sender, EventArgs e)
-        {
-            // Binding new rows is not a choice of the user and changes nothing in the form.
-            if (!_binding)
-            {
-                btnUpdateCar.Enabled = SelectedCarId is not null;
-            }
-        }
-
-        private async void btnAddCar_Click(object? sender, EventArgs e) => await AddAsync();
-
-        private async void btnUpdateCar_Click(object? sender, EventArgs e) => await UpdateAsync();
-
-        private async void btnDeleteCar_Click(object? sender, EventArgs e) => await DeleteAsync();
-
-        private void btnSignOut_Click(object? sender, EventArgs e) => SignOut();
     }
 }

@@ -9,6 +9,25 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Eklenenler
 
+- Yeni tasarım: asfalt grafit ve sinyal turuncusundan oluşan kendi görsel kimliği, yol ve konum iğnesi logosu
+  (`assets/logo.svg`; `app.ico` ve `logo-256.png` olarak rasterleştirilir), başlıklar, ücretler, plakalar ve takvim
+  günleri için Bahnschrift ve başlık, pencere içi ileti şeridi, içerik ve alt bilgiden oluşan tek bir çerçeve üzerinde
+  yeniden kurulan tüm ekranlar.
+- Açık, koyu ve yüksek karşıtlık temaları: `Appearance:Theme` (`Light`, `Dark` veya `System`); yüksek karşıtlık
+  Windows sistem renklerini ve yerel denetimleri kullanır, açık ekranlar yüksek karşıtlık ya da uygulama modu
+  değişince kendini günceller.
+- Aracın kendi renginde kodla çizildiği, plaka ve günlük ücret gösteren araç kartları; iade gününü ve toplam tutarı
+  anında gösteren kiralama ekranı; aşama etiketli kiralama kartları; araçlar, hesaplar, bakım kayıtları ve gelir raporu
+  için temalı listeler (rapor satırları tutarı ve payını gösteren bir çubuk taşır); günlerin durumunu yazı, desen ve
+  renk tonuyla gösteren, bugünü halkayla işaretleyen takvim.
+- Sonuçlar ve retler ileti kutusu yerine pencerenin içinde görünür; sorular temalı bir ileti penceresinde sorulur.
+  Reddedilen alanlar kırmızı bir çerçeve ve erişilebilir açıklama olarak kendi iletisini alır.
+- `tools/Screenshots`: simge ve 1x ile 2x README ekran görüntüleri, hayali bir filoyla pencere açılmadan çizilir; README
+  on dört ekran gösterir.
+- Arayüz testleri: her ekranın 1024x600, 1366x768 ve 1920x1040 çalışma alanlarında, 1 ile 2 arası yazı boyutlarında
+  ve uzun adlarla sığması, temalı denetimler, sekme sırası, pencere içi iletiler, palet karşıtlığı ve kimliği, yüksek
+  karşıtlık ve ekranlar açıkken geçişi, kart ve takvim yerleşimi ve araç çizimi.
+
 - Aracın müsaitlik takvimi: bir ayın her günü veritabanının bugününe göre boş, dolu, bakımda veya geçmiş; durum her
   hücrede yazılı (müşteriler kiralamaya açık araçlar için, yöneticiler her araç için).
 - Yöneticiler için bakım ve hasar kayıtları (migration `AddMaintenanceLog`, `AracBakim` tablosu): kayıtlar aracın
@@ -49,6 +68,13 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Değişenler
 
+- Uygulama monitör başına DPI uyumludur; pencereler içeriğe göre boyutlanır, ekranın çalışma alanından büyük açılmaz
+  ve küçük ekranda gövdeleri kayar.
+- Hesap oluşturma, ilk yönetici, şifre değiştirme ve kiralama pencerelerini kapatır, sonucu onları açan ekran söyler;
+  kendi rolünü veya şifresini değiştiren yönetici, nedenini söyleyen giriş ekranına döner.
+- Tutarlar binlik ayracıyla yazılır ("1.250,00 TL"). Araç, hesap ve bakım kaydı klavyeyle de seçilir; listenin yeniden
+  yüklenmesi hiçbir zaman bir seçim sayılmaz ve formdaki kaydı korur.
+
 - Dolu günler yüzünden reddedilen kiralama artık aracın günlerin bir kısmında müsait olmadığını söyler; kiralama
   veya bakım için aynı cevap. Bakım geçmişi olan araç da silinemez.
 - Hatalar izleme çıktısı yerine log dosyasına yazılır; hata pencereleri değişmedi. Reddedilen işlemler kendi
@@ -68,7 +94,9 @@ Biçim [Keep a Changelog](https://keepachangelog.com/tr-TR/1.1.0/) temel alınar
 
 ### Kaldırılanlar
 
-- Artık var olmayan ekranları gösteren eski uygulamanın ekran görüntüleri; tasarım güncellemesi yenilerini getirecek.
+- Artık var olmayan ekranları gösteren eski uygulamanın ekran görüntüleri; tasarım güncellemesi yenilerini getirdi.
+- Eski giriş resmi, arka plan, araç yer tutucusu ve bunları Edge ile çizen betik; yönetim ekranlarının veri
+  tabloları.
 
 ### Güvenlik
 

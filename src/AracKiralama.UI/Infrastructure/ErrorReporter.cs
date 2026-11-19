@@ -10,7 +10,8 @@ namespace AracKiralama.UI.Infrastructure;
 
 /// <summary>
 /// Turns exceptions into short, user friendly Turkish messages and writes what may be logged about them
-/// (see <see cref="Record"/>) to the log file.
+/// (see <see cref="Record"/>) to the log file. On a screen with a message strip the message appears inline;
+/// anywhere else (startup, a window that is closing) it opens the themed message window.
 /// </summary>
 internal static class ErrorReporter
 {
@@ -44,7 +45,19 @@ internal static class ErrorReporter
         // Rule and permission messages are fixed texts written for the user; they are shown as warnings.
         if (IsRefusal(exception))
         {
+            if (owner is IStatusSurface surface)
+            {
+                surface.ShowStatus(Theming.StatusKind.Warning, exception.Message);
+                return;
+            }
+
             Dialogs.Show(owner, exception.Message, "Uyarı", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (owner is IStatusSurface screen)
+        {
+            screen.ShowStatus(Theming.StatusKind.Error, Describe(exception));
             return;
         }
 

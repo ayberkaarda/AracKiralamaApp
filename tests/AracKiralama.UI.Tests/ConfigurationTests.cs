@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AracKiralama.UI.Theming;
 using Microsoft.Extensions.Configuration;
 
 namespace AracKiralama.UI.Tests;
@@ -27,6 +28,24 @@ public sealed class ConfigurationTests
         Assert.Equal(90, policy.MaxRentalDays);
         Assert.Equal(365, policy.MaxAdvanceDays);
         Assert.Equal(0, policy.LongRentalDiscountPercent);
+        Assert.Equal(ThemeMode.Light, AppConfiguration.ResolveTheme(configuration));
+    }
+
+    [Theory]
+    [InlineData("dark", ThemeMode.Dark)]
+    [InlineData("System", ThemeMode.System)]
+    [InlineData("LIGHT", ThemeMode.Light)]
+    [InlineData(null, ThemeMode.Light)]
+    [InlineData("", ThemeMode.Light)]
+    [InlineData("neon", ThemeMode.Light)]
+    [InlineData("1", ThemeMode.Light)]
+    public void ThemeSetting_FallsBackToLight(string? value, ThemeMode expected)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [AppConfiguration.ThemeKey] = value })
+            .Build();
+
+        Assert.Equal(expected, AppConfiguration.ResolveTheme(configuration));
     }
 
     [Fact]

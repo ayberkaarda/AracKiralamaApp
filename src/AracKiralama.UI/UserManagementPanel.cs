@@ -5,6 +5,7 @@ using AracKiralama.Business.Services;
 using AracKiralama.Business.Validation;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI
 {
@@ -13,47 +14,62 @@ namespace AracKiralama.UI
     /// may stay empty when an account is changed; e-mail and phone may stay empty, as accounts of the
     /// original application may have neither. The list masks both; the edit fields show them in full.
     /// </summary>
-    public partial class UserManagementPanel : Form
+    public sealed class UserManagementPanel : AppDialog
     {
+        internal const string OwnSessionEndedMessage =
+            "Kendi rolünüzü veya şifrenizi değiştirdiniz. Güvenliğiniz için oturumunuz kapatıldı; lütfen yeniden giriş yapın.";
+
         private readonly IAccountService _accounts;
         private readonly UserSession _session;
         private readonly ExclusiveOperation _write = new();
         private readonly RequestSequence _loads = new();
+        private bool _binding;
 
         /// <summary>The phone field's text right after an account was picked, and the stored phone.</summary>
         private (string Shown, string? Stored)? _shownPhone;
 
+        private readonly Label lblCount = FormLayout.Hint(string.Empty);
+        private readonly ThemedListBox lstUsers = new() { Name = nameof(lstUsers), AccessibleName = "Hesaplar", EmptyText = "Henüz hesap yok." };
+        private readonly Label lblSelection = FormLayout.Text(nameof(lblSelection));
+        private readonly Label lblSelectionDetail = FormLayout.Hint(string.Empty);
+        private readonly TextBox txtUserName = new() { Name = nameof(txtUserName), MaxLength = InputRules.StoredUserNameMaxLength };
+        private readonly TextBox txtPassword = new() { Name = nameof(txtPassword), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly TextBox txtEmail = new() { Name = nameof(txtEmail), MaxLength = InputRules.EmailMaxLength };
+        private readonly TextBox txtPhone = new() { Name = nameof(txtPhone), MaxLength = 12 };
+        private readonly ThemedComboBox cmbRole = FormLayout.Picker(nameof(cmbRole), 140, "Rol seçin");
+        private readonly ThemedButton btnNewUser = FormLayout.Button(nameof(btnNewUser), "Yeni Hesap", ButtonKind.Subtle, Glyphs.AddPerson);
+        private readonly ThemedButton btnAddUser = FormLayout.Button(nameof(btnAddUser), "Kullanıcı Ekle", ButtonKind.Secondary, Glyphs.Add);
+        private readonly ThemedButton btnUpdateUser = FormLayout.Button(nameof(btnUpdateUser), "Kullanıcıyı Güncelle", ButtonKind.Primary, Glyphs.Save);
+        private readonly ThemedButton btnDeleteUser = FormLayout.Button(nameof(btnDeleteUser), "Kullanıcıyı Sil", ButtonKind.Danger, Glyphs.Delete);
+        private readonly ThemedButton btnClose = FormLayout.Button(nameof(btnClose), "Kapat", ButtonKind.Secondary);
+
         public UserManagementPanel(IAccountService accounts, UserSession session)
+            : base("Hesaplar", "Hesap ekleyin; rolünü, şifresini ve iletişim bilgilerini değiştirin ya da silin.", Glyphs.People, new Size(1080, 640), new Size(860, 540), modal: true)
         {
             ArgumentNullException.ThrowIfNull(accounts);
             ArgumentNullException.ThrowIfNull(session);
 
             _accounts = accounts;
             _session = session;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
-            MaximumSize = Size;
-            MinimumSize = Size;
-
-            cmbRole.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbRole.ReplaceItems(RoleChoice.All);
-            cmbRole.SelectedIndex = -1;
-            txtUserName.MaxLength = InputRules.StoredUserNameMaxLength;
-            txtPassword.MaxLength = PasswordPolicy.MaxLength;
-            txtPassword.UseSystemPasswordChar = true;
-            txtEmail.MaxLength = InputRules.EmailMaxLength;
-            txtPhone.MaxLength = 12;
             txtPhone.FormatAsPhone();
-            dataGridView1.UseReadOnlyList();
-        }
+            BuildLayout();
+            ClearForm();
 
-        /// <summary>Confirmations and information; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
+            Load += async (_, _) => await this.RunAsync(LoadUsersAsync);
+            lstUsers.SelectedIndexChanged += (_, _) =>
+            {
+                if (!_binding && lstUsers.SelectedItem is AccountItem item)
+                {
+                    SelectUser(item.User);
+                }
+            };
+            btnNewUser.Click += (_, _) => ClearForm();
+            btnAddUser.Click += async (_, _) => await AddAsync();
+            btnUpdateUser.Click += async (_, _) => await UpdateAsync();
+            btnDeleteUser.Click += async (_, _) => await DeleteAsync();
+            btnClose.Click += (_, _) => Close();
+        }
 
         internal int? SelectedUserId => Selected?.Id;
 
@@ -62,18 +78,51 @@ namespace AracKiralama.UI
 
         internal IReadOnlyList<UserSummary> ShownUsers { get; private set; } = [];
 
+        /// <summary>
+        /// Whether the admin changed their own role or password here, which ended their session: the admin
+        /// panel then signs out to the sign-in screen, which says why.
+        /// </summary>
+        internal bool SessionEnded { get; private set; }
+
+        /// <summary>Loads the accounts; only the latest request is shown and binding them selects only the account in the form.</summary>
         internal async Task LoadUsersAsync()
         {
             var request = _loads.Next();
-            var users = await _accounts.GetAllAsync(_session);
-            if (!_loads.IsLatest(request) || IsDisposed)
+            lstUsers.IsLoading = true;
+            try
             {
-                return;
-            }
+                var users = await _accounts.GetAllAsync(_session);
+                if (!_loads.IsLatest(request) || IsDisposed)
+                {
+                    return;
+                }
 
-            ShownUsers = users;
-            dataGridView1.DataSource = users.Select(u => new UserRow(u)).ToList();
-            dataGridView1.ClearSelection();
+                ShownUsers = users;
+                _binding = true;
+                try
+                {
+                    lstUsers.ReplaceItems(users.Select(u => new AccountItem(u)));
+                    lstUsers.ClearSelected();
+                    var index = Selected is { } selected ? users.ToList().FindIndex(u => u.Id == selected.Id) : -1;
+                    if (index >= 0)
+                    {
+                        lstUsers.SelectedIndex = index;
+                    }
+                }
+                finally
+                {
+                    _binding = false;
+                }
+
+                lblCount.Text = string.Create(CultureInfo.CurrentCulture, $"{users.Count} hesap, {users.Count(u => u.Role == UserRole.Admin)} yönetici");
+            }
+            finally
+            {
+                if (_loads.IsLatest(request) && !IsDisposed)
+                {
+                    lstUsers.IsLoading = false;
+                }
+            }
         }
 
         internal void SelectUser(UserSummary user)
@@ -81,12 +130,13 @@ namespace AracKiralama.UI
             ArgumentNullException.ThrowIfNull(user);
 
             Selected = user;
-            txtId.Text = user.Id.ToString(CultureInfo.InvariantCulture);
             txtUserName.Text = user.UserName;
             txtPassword.Clear();
             txtEmail.Text = user.Email ?? string.Empty;
             txtPhone.Text = user.Phone ?? string.Empty;
             cmbRole.SelectedItem = RoleChoice.All.First(r => r.Role == user.Role);
+            lblSelection.Text = user.UserName;
+            lblSelectionDetail.Text = string.Create(CultureInfo.CurrentCulture, $"Kullanıcı no {user.Id} · {RoleChoice.Describe(user.Role)}");
 
             // The phone field keeps digits only, so a phone of the original data in another shape shows
             // changed; left as shown, the stored value is sent.
@@ -97,9 +147,9 @@ namespace AracKiralama.UI
             WriteAsync(async () =>
             {
                 await _accounts.AddAsync(_session, ReadInput());
-                Prompts.Inform("Kullanıcı başarıyla eklendi.");
                 ClearForm();
                 await LoadUsersAsync();
+                Prompts.Inform("Kullanıcı başarıyla eklendi.");
             });
 
         internal Task<bool> UpdateAsync()
@@ -136,28 +186,19 @@ namespace AracKiralama.UI
                 if (ownSessionEnded)
                 {
                     // The admin's own role or password changed: this session has ended for good, so the
-                    // panel signs out instead of answering every later click with a refusal.
+                    // panel signs out instead of answering every later click with a refusal. The sign-in
+                    // screen says why.
                     SessionEnded = true;
                     ClearForm();
-                    Prompts.Inform(OwnSessionEndedMessage);
                     Close();
                     return;
                 }
 
-                Prompts.Inform("Kullanıcı başarıyla güncellendi.");
                 ClearForm();
                 await LoadUsersAsync();
+                Prompts.Inform("Kullanıcı başarıyla güncellendi.");
             });
         }
-
-        internal const string OwnSessionEndedMessage =
-            "Kendi rolünüzü veya şifrenizi değiştirdiniz. Güvenliğiniz için oturumunuz kapatıldı; lütfen yeniden giriş yapın.";
-
-        /// <summary>
-        /// Whether the admin changed their own role or password here, which ended their session: the admin
-        /// panel then signs out to the sign-in screen.
-        /// </summary>
-        internal bool SessionEnded { get; private set; }
 
         internal Task<bool> DeleteAsync()
         {
@@ -175,16 +216,10 @@ namespace AracKiralama.UI
                 }
 
                 await _accounts.DeleteAsync(_session, id);
-                Prompts.Inform("Kullanıcı başarıyla silindi.");
                 ClearForm();
                 await LoadUsersAsync();
+                Prompts.Inform("Kullanıcı başarıyla silindi.");
             });
-        }
-
-        protected override async void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-            await this.RunAsync(LoadUsersAsync);
         }
 
         private Task<bool> WriteAsync(Func<Task> write) =>
@@ -203,7 +238,8 @@ namespace AracKiralama.UI
                 },
                 btnAddUser,
                 btnUpdateUser,
-                btnDeleteUser);
+                btnDeleteUser,
+                btnNewUser);
 
         private AccountInput ReadInput() => new(
             txtUserName.Text,
@@ -216,29 +252,69 @@ namespace AracKiralama.UI
         {
             Selected = null;
             _shownPhone = null;
-            dataGridView1.ClearSelection();
-            txtId.Clear();
+            _binding = true;
+            try
+            {
+                lstUsers.ClearSelected();
+            }
+            finally
+            {
+                _binding = false;
+            }
+
             txtUserName.Clear();
             txtPassword.Clear();
             txtEmail.Clear();
             txtPhone.Clear();
             cmbRole.SelectedIndex = -1;
+            lblSelection.Text = "Yeni hesap";
+            lblSelectionDetail.Text = "Bilgileri girip \"Kullanıcı Ekle\" ile kaydedin.";
         }
 
-        private void dataGridView1_CellClick(object? sender, DataGridViewCellEventArgs e)
+        private void BuildLayout()
         {
-            if (e.RowIndex >= 0 && dataGridView1.Rows[e.RowIndex].DataBoundItem is UserRow row)
-            {
-                SelectUser(row.User);
-            }
+            Name = nameof(UserManagementPanel);
+            lblCount.Name = nameof(lblCount);
+            btnNewUser.Margin = Padding.Empty;
+            var toolbar = FormLayout.Bar("userToolbar", (lblCount, true), (btnNewUser, false));
+            toolbar.Margin = new Padding(0, 0, 0, Spacing.S);
+            lstUsers.Describe = item => item is AccountItem account ? account.Row() : new ListRow(item.ToString() ?? string.Empty);
+            lstUsers.LoadingText = "Hesaplar yükleniyor…";
+            var usersCard = FormLayout.Card("usersCard", "Hesaplar", FormLayout.Page("usersPage", (toolbar, false), (lstUsers, true)));
+
+            var badge = new GlyphBadge(Glyphs.Person, Sizes.HeaderBadge, 14F) { Name = "selectionBadge", Margin = new Padding(0, 0, Spacing.M, 0) };
+            lblSelection.Font = Theme.Fonts.Subtitle;
+            lblSelectionDetail.Name = nameof(lblSelectionDetail);
+            var selectionText = FormLayout.Stack("selectionText", lblSelection, lblSelectionDetail);
+            var selection = FormLayout.Bar("selectionRow", (badge, false), (selectionText, true));
+            selectionText.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            selection.Margin = new Padding(0, 0, 0, Spacing.M);
+            var name = FormLayout.FieldRow(
+                "nameRow",
+                (FormLayout.Field("&Kullanıcı adı", FormLayout.Input(txtUserName)), 60),
+                (FormLayout.Field("&Rol", cmbRole), 40));
+            var password = FormLayout.Field(
+                "&Yeni şifre",
+                FormLayout.Input(txtPassword),
+                string.Create(CultureInfo.CurrentCulture, $"Yeni hesapta zorunlu; değiştirirken boş bırakılırsa şifre aynı kalır. En az {PasswordPolicy.MinLength} karakter."));
+            password.Margin = new Padding(0, 0, 0, Spacing.M);
+            var contact = FormLayout.FieldRow(
+                "contactRow",
+                (FormLayout.Field("&E-posta", FormLayout.Input(txtEmail)), 60),
+                (FormLayout.Field("&Telefon", FormLayout.Input(txtPhone)), 40));
+            btnAddUser.Margin = btnUpdateUser.Margin = new Padding(0, 0, Spacing.S, 0);
+            btnDeleteUser.Margin = Padding.Empty;
+            var actions = FormLayout.Bar("userActions", (btnAddUser, false), (btnUpdateUser, false), (FormLayout.Spacer("userActionsSpacer"), true), (btnDeleteUser, false));
+            actions.Margin = new Padding(0, Spacing.S, 0, 0);
+            var accountCard = FormLayout.Card("accountCard", "Hesap bilgileri", FormLayout.Stack("accountForm", selection, name, password, contact, actions), fill: false);
+            accountCard.Margin = Padding.Empty;
+
+            Content.Controls.Add(FormLayout.Columns("layout", usersCard, 46, FormLayout.Page("formColumn", (accountCard, false))));
+
+            CancelButton = btnClose;
+            SetFooterNote("Listede e-posta ve telefon maskelenir; tam hali yalnızca seçilen hesabın alanlarında görünür.");
+            SetFooterButtons(btnClose);
+            FinishLayout();
         }
-
-        private void btnClose_Click(object? sender, EventArgs e) => Close();
-
-        private async void btnUpdateUser_Click(object? sender, EventArgs e) => await UpdateAsync();
-
-        private async void btnDeleteUser_Click(object? sender, EventArgs e) => await DeleteAsync();
-
-        private async void btnAddUser_Click(object? sender, EventArgs e) => await AddAsync();
     }
 }

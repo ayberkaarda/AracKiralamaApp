@@ -2,6 +2,7 @@ using AracKiralama.Business;
 using AracKiralama.Business.Services;
 using AracKiralama.UI.Infrastructure;
 using AracKiralama.UI.Tests.Support;
+using AracKiralama.UI.Theming;
 using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
@@ -64,8 +65,29 @@ public sealed class ExclusiveWriteTests
 
         Assert.False(second.Result);
         Assert.Equal(1, auth.RegisterCalls);
+        Assert.False(Find<Button>(form, "btnRegister").Enabled);
+        Assert.False(Find<Button>(form, "btnCancel").Enabled);
         auth.CompleteRegister();
         Assert.True(first.Result);
+        Assert.True(Find<Button>(form, "btnRegister").Enabled);
+    });
+
+    /// <summary>Empty fields are marked next to their inputs as the original form did; filling one in clears its mark.</summary>
+    [Fact]
+    public void Register_EmptyFields_AreMarkedUntilTheyAreFilledIn() => Run(() =>
+    {
+        var auth = new PendingAuthService();
+        using var form = new RegisterForm(auth);
+        Find<TextBox>(form, "txtUserName").Text = "yeni.musteri";
+        Find<TextBox>(form, "txtPassword").Text = "Gizli.Sifre1";
+
+        _ = form.RegisterAsync();
+
+        Assert.Equal(["txtEmail", "txtPhone"], form.MarkedFields);
+        Find<TextBox>(form, "txtEmail").Text = "yeni@example.com";
+        Assert.Equal(["txtPhone"], form.MarkedFields);
+        Assert.Equal(RegisterForm.EmptyField, Find<TextBox>(form, "txtPhone").AccessibleDescription);
+        auth.CompleteRegister();
     });
 
     [Fact]
@@ -106,12 +128,13 @@ public sealed class ExclusiveWriteTests
         Assert.Equal(3, rentals.LastQuote!.Days);
         Assert.Equal(new DateOnly(2026, 3, 10), rentals.LastQuote.StartDate);
         Assert.Equal(850.5m, rentals.LastQuote.DailyPrice);
-        Assert.Contains("Toplam Tutar: 2551,50 TL", prompts.Messages[0], StringComparison.Ordinal);
+        Assert.Contains("Toplam Tutar: 2.551,50 TL", prompts.Messages[0], StringComparison.Ordinal);
         Assert.Contains("13.03.2026", prompts.Messages[0], StringComparison.Ordinal);
         Assert.False(Find<DateTimePicker>(form, "dtpStart").Enabled);
 
         rentals.CompleteRent();
         Assert.True(first.Result);
+        Assert.Contains("10.03.2026 - 13.03.2026, 2.551,50 TL", form.DoneMessage, StringComparison.Ordinal);
     });
 
     [Fact]
@@ -174,7 +197,6 @@ public sealed class ExclusiveWriteTests
     public void EndRental_AlreadyEnded_RefreshesTheList() => Run(() =>
     {
         const string NotFound = "Kiralama bulunamadı veya zaten sona ermiş.";
-        var shownBefore = NoDialogs.Requested.Count(r => r.Contains(NotFound, StringComparison.Ordinal));
         var rentals = new ControlledRentalService();
         using var profile = new ProfileForm(rentals, new ControlledContractService(), new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
         using var panel = new RentedCarsPanel(rentals, new ControlledCarService(), new ControlledContractService(), Sessions.Admin) { Prompts = new RecordingPrompts() };
@@ -192,7 +214,8 @@ public sealed class ExclusiveWriteTests
         Assert.Equal([10], profile.ShownRentals.Select(r => r.Id));
         Assert.Equal([10], panel.ShownRentals.Select(r => r.Id));
         Assert.True(Assert.Single(profile.EndButtons).Enabled);
-        Assert.Equal(shownBefore + 2, NoDialogs.Requested.Count(r => r.Contains(NotFound, StringComparison.Ordinal)));
+        Assert.Equal((StatusKind.Warning, NotFound), (profile.StatusBar.Kind, profile.StatusBar.Text));
+        Assert.Equal((StatusKind.Warning, NotFound), (panel.StatusBar.Kind, panel.StatusBar.Text));
     });
 
     /// <summary>A booking refused because the days were taken meanwhile shows the taken days as they are now.</summary>
@@ -270,13 +293,18 @@ public sealed class ExclusiveWriteTests
                 new Dictionary<string, string> { [nameof(CarInput.Brand)] = "Marka boş bırakılamaz.", [nameof(CarInput.Plate)] = "Plaka boş bırakılamaz." }),
         };
         using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
-        var errors = (ErrorProvider)typeof(AdminPanel).GetField("errorProvider1", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(form)!;
 
         Assert.True(form.AddAsync().IsCompletedSuccessfully);
 
-        Assert.Equal("Marka boş bırakılamaz.", errors.GetError(Find<TextBox>(form, "txtBrand")));
-        Assert.Equal("Plaka boş bırakılamaz.", errors.GetError(Find<TextBox>(form, "txtPlate")));
-        Assert.Empty(errors.GetError(Find<TextBox>(form, "txtModel")));
-        Assert.Contains(NoDialogs.Requested, r => r.Contains("Lütfen gerekli alanları doldurun.", StringComparison.Ordinal));
+        Assert.Equal("Marka boş bırakılamaz.", form.FieldError(nameof(CarInput.Brand)));
+        Assert.Equal("Plaka boş bırakılamaz.", form.FieldError(nameof(CarInput.Plate)));
+        Assert.Equal("Plaka boş bırakılamaz.", Find<TextBox>(form, "txtPlate").AccessibleDescription);
+        Assert.Null(form.FieldError(nameof(CarInput.Model)));
+        Assert.Equal((StatusKind.Warning, "Lütfen gerekli alanları doldurun."), (form.StatusBar.Kind, form.StatusBar.Text));
+
+        // The next write starts with clean fields.
+        cars.AddFailure = null;
+        _ = form.AddAsync();
+        Assert.Null(form.FieldError(nameof(CarInput.Brand)));
     });
 }

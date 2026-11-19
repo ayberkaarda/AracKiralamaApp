@@ -12,7 +12,8 @@ namespace AracKiralama.UI.Infrastructure;
 /// name that points to this computer, the local network or a link-local address is refused, also after a
 /// DNS change), without redirects or proxies, with a time limit, a download size limit and a picture
 /// size limit checked before decoding, and only a few at a time. Anything else, and
-/// every failure, shows the application's own placeholder. Per picture box only the latest request is
+/// every failure, leaves the picture empty, where <see cref="Theming.VehiclePicture"/> draws the application's own
+/// vehicle art. Per picture box only the latest request is
 /// applied, so a slow answer never replaces the picture of a car chosen later.
 /// </summary>
 internal static class CarPictures
@@ -42,15 +43,15 @@ internal static class CarPictures
     private static readonly SemaphoreSlim Loads = new(MaxConcurrentLoads, MaxConcurrentLoads);
 
     /// <summary>
-    /// Shows the placeholder at once and, for an acceptable address, replaces it with the downloaded
-    /// picture when it arrives, unless another picture was asked for in the meantime.
+    /// Empties the picture at once and, for an acceptable address, shows the downloaded picture when it
+    /// arrives, unless another picture was asked for in the meantime.
     /// </summary>
     public static void Show(PictureBox pictureBox, string? address)
     {
         ArgumentNullException.ThrowIfNull(pictureBox);
 
         var request = Sequences.GetValue(pictureBox, _ => new RequestSequence()).Next();
-        Replace(pictureBox, AppAssets.CarPlaceholder);
+        Replace(pictureBox, null);
         if (TryGetAllowedUri(address, out var uri))
         {
             _ = LoadIntoAsync(pictureBox, uri, request);
@@ -256,11 +257,11 @@ internal static class CarPictures
         return buffer.ToArray();
     }
 
-    private static void Replace(PictureBox pictureBox, Image image)
+    private static void Replace(PictureBox pictureBox, Image? image)
     {
         var previous = pictureBox.Image;
         pictureBox.Image = image;
-        if (previous is not null && !ReferenceEquals(previous, image) && !ReferenceEquals(previous, AppAssets.CarPlaceholder))
+        if (previous is not null && !ReferenceEquals(previous, image))
         {
             previous.Dispose();
         }

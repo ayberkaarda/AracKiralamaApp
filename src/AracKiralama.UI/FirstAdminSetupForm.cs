@@ -1,7 +1,9 @@
+using System.Globalization;
 using AracKiralama.Business.Security;
 using AracKiralama.Business.Services;
 using AracKiralama.Business.Validation;
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
 
 namespace AracKiralama.UI
 {
@@ -12,34 +14,34 @@ namespace AracKiralama.UI
     /// set: then a setup key issued for that database proves the founder's authority. Closes with
     /// <see cref="DialogResult.OK"/> and <see cref="Session"/> set on success.
     /// </summary>
-    public partial class FirstAdminSetupForm : Form
+    public sealed class FirstAdminSetupForm : AppDialog
     {
-        /// <summary>Height of the key row and the longer explanation, removed while no key is asked for.</summary>
-        private const int KeySectionHeight = 64;
+        internal const string EmptyDatabaseText =
+            "Henüz bir yönetici hesabı yok. İlk yönetici hesabını kendi belirleyeceğiniz bir şifreyle oluşturun; varsayılan bir hesap ya da şifre yoktur.";
 
         private readonly ISetupService _setup;
         private readonly ExclusiveOperation _create = new();
-        private readonly string _emptyDatabaseText;
         private bool _requireSetupKey = true;
 
+        private readonly Label lblDescription = FormLayout.Text(nameof(lblDescription));
+        private readonly TextBox txtKey = new() { Name = nameof(txtKey), MaxLength = 64, PlaceholderText = "32 onaltılık karakter" };
+        private readonly TextBox txtUserName = new() { Name = nameof(txtUserName), MaxLength = InputRules.UserNameMaxLength };
+        private readonly TextBox txtPassword = new() { Name = nameof(txtPassword), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly TextBox txtPasswordRepeat = new() { Name = nameof(txtPasswordRepeat), MaxLength = PasswordPolicy.MaxLength, UseSystemPasswordChar = true };
+        private readonly ThemedButton btnCreate = FormLayout.Button(nameof(btnCreate), "Hesabı Oluştur", ButtonKind.Primary, Glyphs.Admin);
+        private readonly ThemedButton btnCancel = FormLayout.Button(nameof(btnCancel), "İptal", ButtonKind.Secondary);
+        private TableLayoutPanel _keyField = null!;
+
         public FirstAdminSetupForm(ISetupService setup)
+            : base("İlk kurulum", "İlk yönetici hesabını oluşturun.", Glyphs.Admin, new Size(600, 600), new Size(500, 520), modal: true)
         {
             ArgumentNullException.ThrowIfNull(setup);
 
             _setup = setup;
-            Prompts = new MessageBoxPrompts(this);
-
-            InitializeComponent();
-            Icon = AppAssets.Icon;
-            Text = AppText.Title + " - " + Text;
-            _emptyDatabaseText = lblDescription.Text;
-            txtKey.MaxLength = 64;
-            txtUserName.MaxLength = InputRules.UserNameMaxLength;
-            txtPassword.MaxLength = PasswordPolicy.MaxLength;
-            txtPasswordRepeat.MaxLength = PasswordPolicy.MaxLength;
-            AcceptButton = btnCreate;
-            CancelButton = btnCancel;
+            BuildLayout();
+            _create.HoldClosingOf(this);
             RequireSetupKey = false;
+            btnCreate.Click += async (_, _) => await CreateAndCloseAsync();
         }
 
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -49,7 +51,7 @@ namespace AracKiralama.UI
         /// Whether the setup key is asked for, because the database has accounts but no admin. The key field
         /// starts with the key of the ARAC_SETUP_KEY environment variable, if it has the form of one; the
         /// database decides whether it is a valid key. A malformed value fills in nothing and is reported as
-        /// a configuration error when the form opens.
+        /// a configuration warning in the window.
         /// </summary>
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool RequireSetupKey
@@ -63,37 +65,31 @@ namespace AracKiralama.UI
                 }
 
                 _requireSetupKey = value;
-                var shift = value ? KeySectionHeight : -KeySectionHeight;
-                SuspendLayout();
-                lblDescription.Height += shift;
-                lblDescription.Text = value ? SetupKeyHint : _emptyDatabaseText;
-                lblKey.Visible = value;
-                txtKey.Visible = value;
+                lblDescription.Text = value ? SetupKeyHint : EmptyDatabaseText;
+                FormLayout.SetShown(_keyField, value);
                 var prefill = value ? _setup.GetEnvironmentKey() : new SetupKeyPrefill(null, false);
                 txtKey.Text = prefill.Key ?? string.Empty;
                 EnvironmentKeyWarning = prefill.Invalid ? EnvironmentKeyInvalid : null;
-                foreach (Control control in new Control[] { lblUserName, txtUserName, lblPassword, txtPassword, lblRepeat, txtPasswordRepeat, btnCreate, btnCancel })
+                if (EnvironmentKeyWarning is { } warning)
                 {
-                    control.Top += shift;
+                    ShowStatus(StatusKind.Warning, warning);
+                }
+                else
+                {
+                    ClearStatus();
                 }
 
-                ClientSize = new Size(ClientSize.Width, ClientSize.Height + shift);
                 ActiveControl = value ? txtKey : txtUserName;
-                ResumeLayout();
             }
         }
 
-        /// <summary>The configuration warning shown when the form opens, or <see langword="null"/>.</summary>
+        /// <summary>The configuration warning shown in the window, or <see langword="null"/>.</summary>
         internal string? EnvironmentKeyWarning { get; private set; }
 
         /// <summary>Shown when ARAC_SETUP_KEY is set to something that is not a setup key; the value itself is never shown.</summary>
         internal static readonly string EnvironmentKeyInvalid =
             SetupKeyPolicy.EnvironmentVariable + " ortam değişkeni geçerli bir kurulum anahtarı biçiminde değil (32 onaltılık karakter); "
             + "alan boş bırakıldı. Anahtarı elle girin veya ortam değişkenini düzeltin.";
-
-        /// <summary>Information dialogs; replaced in tests so no window opens.</summary>
-        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-        internal IUserPrompts Prompts { get; set; }
 
         /// <summary>How the founder gets a setup key for this database; no key is issued or shown here.</summary>
         internal static readonly string SetupKeyHint =
@@ -133,25 +129,44 @@ namespace AracKiralama.UI
             return session;
         }
 
-        protected override void OnShown(EventArgs e)
-        {
-            base.OnShown(e);
-            if (EnvironmentKeyWarning is { } warning)
-            {
-                Prompts.Warn(warning);
-            }
-        }
-
-        private async void btnCreate_Click(object? sender, EventArgs e)
+        private async Task CreateAndCloseAsync()
         {
             var session = await CreateAsync();
             if (session is not null)
             {
-                Prompts.Inform("Yönetici hesabı oluşturuldu. Lütfen yeni şifrenizle giriş yapın.");
                 Session = session;
                 DialogResult = DialogResult.OK;
-                Close();
             }
+        }
+
+        private void BuildLayout()
+        {
+            Name = nameof(FirstAdminSetupForm);
+            lblDescription.Text = EmptyDatabaseText;
+            var note = FormLayout.Note("setupNote", Glyphs.Info, lblDescription);
+
+            _keyField = FormLayout.Field("Kurulum &anahtarı", FormLayout.Input(txtKey), "Tireler ve boşluklar yok sayılır.");
+            var name = FormLayout.Field("&Kullanıcı adı", FormLayout.Input(txtUserName));
+            var password = FormLayout.Field(
+                "Ş&ifre",
+                FormLayout.Input(txtPassword),
+                string.Create(CultureInfo.CurrentCulture, $"En az {PasswordPolicy.MinLength}, en fazla {PasswordPolicy.MaxLength} karakter."));
+            var repeat = FormLayout.Field("Şifre &tekrar", FormLayout.Input(txtPasswordRepeat));
+            foreach (var field in new[] { _keyField, name, password, repeat })
+            {
+                field.Margin = new Padding(0, 0, 0, Spacing.M);
+            }
+
+            var card = FormLayout.Card("adminCard", "Yönetici hesabı", FormLayout.Stack("adminForm", _keyField, name, password, repeat), fill: false);
+            card.Margin = Padding.Empty;
+            Content.Controls.Add(FormLayout.Stack("setupStack", note, card));
+
+            AcceptButton = btnCreate;
+            CancelButton = btnCancel;
+            btnCancel.DialogResult = DialogResult.Cancel;
+            SetFooterNote("Hesap oluşunca yeni şifrenizle giriş yaparsınız.");
+            SetFooterButtons(btnCreate, btnCancel);
+            FinishLayout();
         }
     }
 }

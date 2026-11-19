@@ -14,20 +14,35 @@ layers; database access uses EF Core, and the database is created, migrated or u
 
 ## 📦 Features
 
+### Design and themes
+
+- ✅ **Own visual identity**: asphalt graphite and signal orange, a road and location pin logo, headings, prices,
+  plates and calendar days in Bahnschrift (the DIN-style road-sign face of Windows) and running text in Segoe UI.
+  Cars without a picture are drawn in code in their own colour; no photograph, brand or real model is used.
+- ✅ **Light, dark and high contrast**: `Appearance:Theme` chooses `Light` (default), `Dark` or `System` (follows the
+  Windows app mode). High contrast always wins and uses the Windows system colours with native controls; selected
+  and hovered items keep HighlightText. Open screens follow a change of high contrast or the app mode while the
+  application runs.
+- ✅ **One frame for every screen**: a header with what the screen is for, an inline message strip for results and
+  refusals (no message window takes the focus; only questions ask in a themed window), the content and a footer with
+  the actions. Windows fit their content, never open larger than the screen's working area and scroll their body on a
+  small screen; the application is per-monitor DPI aware.
+
 ### Car catalog
 
-- ✅ **Catalog** ("Araç Kirala", Rent a Car): the listed cars with picture, brand, model, year, gearbox, fuel type and
-  daily price.
+- ✅ **Catalog** ("Araçlar", Cars): the listed cars as cards with picture, brand, model, plate, year, gearbox, fuel
+  type, colour and daily price.
 - ✅ **Filters** by brand ("Marka"), gearbox ("Vites Tipi") and fuel type ("Yakıt Tipi"); filling the filter lists never
   starts a load by itself, and only the answer to the latest filter is shown.
 - ✅ **Car pictures** are loaded in the background from public http or https addresses only; anything else shows the
-  application's own placeholder.
+  application's own drawing of the car in its colour.
 
 ### Bookings, cancellations and returns
 
-- ✅ **Book** ("Kirala", Rent → "Kiralama Ekranı", Rental Screen): pick the start day ("Alış Tarihi", Pick-up Date) and
-  the number of days ("Gün Sayısı"); the screen lists the days the car is already taken. "Ödemeye Geç" (Proceed to
-  Payment) shows the pick-up and return dates and the total and asks for confirmation. No payment is taken.
+- ✅ **Book** ("Kirala", Rent → "Araç kirala", Book a Car): pick the start day ("Alış günü", Pick-up Day) and the
+  number of days ("Gün sayısı"); the screen shows the return day and the total as they change and lists the days the
+  car is already taken. "Kiralamayı Onayla" (Confirm Rental) shows the pick-up and return dates and the total and asks
+  for confirmation. No payment is taken.
 - ✅ **Days are half-open ranges**: a booking holds the pick-up day up to, but not including, the return day. A booking
   may start on the day another one ends; any shared day is refused, also when two customers book at the same moment.
 - ✅ **Settings** (`Rental` section): shortest and longest rental (1 and 90 days by default), how far ahead a booking
@@ -35,24 +50,24 @@ layers; database access uses EF Core, and the database is created, migrated or u
   the past.
 - ✅ **Price check**: when the daily price changes after the quote was shown, the booking is refused and nothing is
   written.
-- ✅ **Cancel or return** from the customer's profile ("Kullanıcı Profili", User Profile), which lists the account's
-  own active rentals: before the pick-up day "Kiralamayı İptal Et" (Cancel Rental) frees every day; once the rental is
+- ✅ **Cancel or return** from "Kiralamalarım" (My Rentals), which lists the account's own active rentals as cards with
+  their stage ("Başlamadı", not started; "Devam ediyor", under way): before the pick-up day "Kiralamayı İptal Et" (Cancel Rental) frees every day; once the rental is
   under way "İade Al" (Take Back) returns the car today and frees the remaining days. Admins do the same for any
   rental in the rental panel. Rentals are never deleted; they keep their row with a new status.
 
 ### Admin panel
 
-- ✅ **Cars** ("Yönetim Paneli", Admin Panel): add ("Araç Ekle"), change ("Aracı Güncelle") and delete ("Aracı Sil")
-  cars with brand, model, year, gearbox, fuel type, mileage, colour, plate, daily price and picture link ("Resim
-  Linki"). Every invalid field is marked next to its control. Plates are unique. A car with rental history cannot be
+- ✅ **Cars** ("Yönetim paneli", Admin Panel): add ("Araç Ekle"), change ("Aracı Güncelle") and delete ("Aracı Sil")
+  cars with brand, model, year, gearbox, fuel type, mileage, colour, plate, daily price and picture address ("Resim
+  adresi"). Every invalid field gets a danger border and its message. Plates are unique. A car with rental history cannot be
   deleted; "Kiralamaya açık" (Open for rental) hides it from customers instead. A change from a form opened before
   another admin's change (a new price, the car taken off the list) is refused and the car is loaded again.
-- ✅ **Accounts** ("Kullanıcı Yönetim Paneli", User Management Panel): add, change and delete accounts with role,
+- ✅ **Accounts** ("Hesaplar"): add, change and delete accounts with role,
   e-mail and phone (masked in the list); a new password replaces the old one and lifts a lock. Admins and accounts
   with rentals cannot be deleted, and the last admin keeps the admin role. A change from a form opened before the
   account's role or password changed elsewhere is refused and the account is loaded again, so a stale form cannot give
   back a role another admin just removed. An admin who changes their own role or password is signed out.
-- ✅ **Rentals** ("Kiralanan Araçlar", Rented Cars): every active rental, filterable by brand, gearbox and fuel type.
+- ✅ **Rentals** ("Kiralamalar"): every active rental with its renter, filterable by brand, gearbox and fuel type.
 
 ### Calendar, maintenance, reports and contracts
 
@@ -106,8 +121,20 @@ layers; database access uses EF Core, and the database is created, migrated or u
 
 ## 🖼️ Screenshots
 
-The screenshots are being redrawn for the new design and return with it. The earlier images showed the original
-application's screens, which no longer exist, and were removed.
+The screens are drawn offscreen from an invented fleet (made-up brands and models, demonstration plates with the
+province code 00 that no plate uses, sample accounts on example.com), so they show no real data, brand or photograph;
+every car is the application's own drawing. Each image links to its 2x version. To draw them again:
+`dotnet run --project tools/Screenshots -c Release -- screenshots`.
+
+| | |
+|---|---|
+| [![Sign-in](screenshots/giris.png)](screenshots/giris-2x.png)<br>**Sign-in** ("Giriş") with the brand panel | [![Sign-up](screenshots/hesap-olusturma.png)](screenshots/hesap-olusturma-2x.png)<br>**Sign-up** ("Hesap oluştur") |
+| [![Cars](screenshots/araclar.png)](screenshots/araclar-2x.png)<br>**Cars** ("Araçlar") after a booking, reported inline | [![Book a car](screenshots/arac-kiralama.png)](screenshots/arac-kiralama-2x.png)<br>**Book a car** ("Araç kirala") with the live total |
+| [![Availability calendar](screenshots/musaitlik-takvimi.png)](screenshots/musaitlik-takvimi-2x.png)<br>**Availability calendar** ("Müsaitlik takvimi") every day in words, pattern and tint | [![My rentals](screenshots/kiralamalarim.png)](screenshots/kiralamalarim-2x.png)<br>**My rentals** ("Kiralamalarım") cancel, return, contract |
+| [![Confirmation](screenshots/onay-penceresi.png)](screenshots/onay-penceresi-2x.png)<br>**Confirmation** ("Onay") before a rental is cancelled | [![Change password](screenshots/sifre-degistirme.png)](screenshots/sifre-degistirme-2x.png)<br>**Change password** ("Şifre değiştir") |
+| [![Admin panel](screenshots/yonetim-paneli.png)](screenshots/yonetim-paneli-2x.png)<br>**Admin panel** ("Yönetim paneli") cars beside the edit form | [![Accounts](screenshots/hesaplar.png)](screenshots/hesaplar-2x.png)<br>**Accounts** ("Hesaplar") contact data masked in the list |
+| [![Rentals](screenshots/kiralamalar.png)](screenshots/kiralamalar-2x.png)<br>**Rentals** ("Kiralamalar") every active rental with its renter | [![Maintenance and damage log](screenshots/bakim-kayitlari.png)](screenshots/bakim-kayitlari-2x.png)<br>**Maintenance and damage log** ("Bakım ve hasar kayıtları") |
+| [![Revenue report](screenshots/gelir-raporu.png)](screenshots/gelir-raporu-2x.png)<br>**Revenue report** ("Gelir raporu") totals, periods and cars with bars | [![First-run setup](screenshots/ilk-kurulum.png)](screenshots/ilk-kurulum-2x.png)<br>**First-run setup** ("İlk kurulum") with the setup key |
 
 ---
 
@@ -137,7 +164,7 @@ application's screens, which no longer exist, and were removed.
 | Area | Used |
 |---|---|
 | Platform | .NET 10 (`net10.0-windows` UI, `net10.0` libraries) |
-| UI | Windows Forms |
+| UI | Windows Forms, own theming (light, dark, high contrast), per-monitor DPI |
 | Data access | Entity Framework Core 10 (SQL Server provider) |
 | Database | Microsoft SQL Server (Express is enough) |
 | Password hashing | PBKDF2-HMAC-SHA256 (`Rfc2898DeriveBytes.Pbkdf2`) |
@@ -157,12 +184,14 @@ AracKiralamaApp/
 │   ├── AracKiralama.Domain/     # Entities (User, Car, Rental, SetupKey) and repository contracts
 │   ├── AracKiralama.Business/   # Auth, setup, car, rental and account services, prices, Security/ (PBKDF2, lockout, setup keys), Validation/ (FluentValidation), Auditing/
 │   ├── AracKiralama.Data/       # EF Core DbContext, configurations, Persistence/Migrations/, legacy upgrade, car locks, database clock, demo data, repositories
-│   └── AracKiralama.UI/         # WinForms screens, Infrastructure/ (errors, logging, dialogs, write guard, picture loader), Program.cs (composition root)
+│   └── AracKiralama.UI/         # WinForms screens, Theming/ (palettes, fonts, themed controls, vehicle art), Infrastructure/ (screen frame, errors, logging, dialogs, write guard, picture loader), Program.cs (composition root)
 ├── tests/
 │   ├── AracKiralama.Business.Tests/  # Validators, audit codes, hashing, lockout, booking rules, prices and ownership (Moq)
 │   ├── AracKiralama.Data.Tests/      # Services on SQLite; booking races, setup keys, the restricted login and the legacy upgrade on SQL Server
-│   └── AracKiralama.UI.Tests/        # Configuration, errors, logs, pictures, focus and write guards (no windows shown)
-├── assets/                      # Original logo, background, sign-in picture, car placeholder and icon with their SVG sources
+│   └── AracKiralama.UI.Tests/        # Screens, layout, themes, configuration, errors, logs, pictures, focus and write guards (no windows shown)
+├── tools/Screenshots/           # Icon and README screenshots, drawn offscreen with an invented fleet
+├── screenshots/                 # README images at 1x and 2x
+├── assets/                      # Original logo (logo.svg) with its icon and 256 px raster
 ├── docs/
 │   ├── issue-setup-key.sql      # Setup key, run by the database owner
 │   ├── grant-app-login.sql      # Rights of the application's own login
@@ -222,6 +251,9 @@ The connection string is never written into the code. Provide one named `AracKir
      "Seed": {
        "Demo": false
      },
+     "Appearance": {
+       "Theme": "Light"
+     },
      "Rental": {
        "MinRentalDays": 1,
        "MaxRentalDays": 90,
@@ -252,7 +284,8 @@ The `Rental` section takes whole numbers: `MinRentalDays` (1-3650), `MaxRentalDa
 `MaxAdvanceDays` (0-3650, 0 allows bookings starting today only), and `LongRentalDays` (0-3650) with
 `LongRentalDiscountPercent` (0-90): rentals of at least `LongRentalDays` days get that discount; 0 turns it off. If no
 connection string is found or the rental settings are invalid, the application shows a Turkish message naming the
-problem and exits.
+problem and exits. `Appearance:Theme` is `Light` (default), `Dark` or `System`; any other value means `Light`, and
+Windows high contrast always wins.
 
 ### 2. Running
 
@@ -380,7 +413,7 @@ dotnet test -c Release
 |---|---|---|
 | `tests/AracKiralama.Business.Tests` | Unit | Validator limits and message order (user name 3/32, password 8/64, e-mail, phone, car fields, plates, rental days and dates), kept legacy values, audit codes, PBKDF2 and format upgrade, lockout, booking and price rules, ownership and admin checks with strict Moq mocks, session versions, maintenance input, calendar states, revenue sums and limits, formula-safe CSV, contract encoding and CSP |
 | `tests/AracKiralama.Data.Tests` | Integration | Services and repositories on SQLite in-memory (overlap boundaries, shortest and longest rental, booking horizon, cancel or return by day, IDOR answers, lockout length, demoted sessions, refused input writes nothing); maintenance blocks and stale versions, calendar, revenue and contract owner checks, sessions ended by role or password changes; booking, lockout, maintenance and stale-save races, a busy car lock under a short command timeout, setup keys and every new feature under the restricted login and the legacy upgrade on SQL Server |
-| `tests/AracKiralama.UI.Tests` | Unit | Example configuration, error messages, log content and retention, picture address checks, focus after unlock, write guards, latest-wins loading of calendar months and reports, single maintenance and contract saves, stale-save reloads, font-sized calendar cells, neutral branding |
+| `tests/AracKiralama.UI.Tests` | Unit | Every screen inside working areas of 1024x600, 1366x768 and 1920x1040 at text sizes 1 to 2 with long names (no clipping, no overlaps, header and footer in view), themed controls, tab order, inline messages, palette contrast, high contrast with the system colours and its switch while screens are open, card and calendar layout, vehicle art, example configuration, error messages, log content and retention, picture address checks, focus after unlock, write guards, latest-wins loading of calendar months and reports, single maintenance and contract saves, stale-save reloads, font-sized calendar cells, neutral branding |
 
 The SQL Server tests use throw-away databases on the server in `ARAC_TEST_SQLSERVER` (default: local SQL Express
 with Windows authentication). They are skipped when `ARAC_SKIP_SQL_TESTS=1` is set or no server is reachable; with
@@ -430,8 +463,12 @@ The target machine needs the .NET 10 Desktop Runtime. Put `appsettings.json` nex
   failure, so the user sees one message at a time; the car validator reports every invalid field.
 - New write buttons should go through `ExclusiveOperation` and move the focus with `FocusAfterUnlock`; loads
   triggered by a selection should use `RequestSequence` so only the latest response is shown, and binding data in
-  code must not count as a user's selection. Message boxes go through `Dialogs` or `IUserPrompts`, never
-  `MessageBox` directly.
+  code must not count as a user's selection. Results and refusals of a screen go through `IUserPrompts` into its
+  inline message strip; questions and messages outside a screen go through `Dialogs` (the themed message window),
+  never `MessageBox` directly.
+- New screens derive from `AppDialog` and are built with `FormLayout` and the themed controls in `Theming/`; colors
+  come from the palette roles, never literals, and nothing sets a text color on selected or hovered items under high
+  contrast. `tools/Screenshots` draws a new screen once it is added to `Screens.All`.
 - Every privileged service call goes through `AccessGuard`, which reads the account's role from the database;
   repository writes take the acting account and check it again.
 - Audit events carry only an event kind and a role; do not add identifying data to them.

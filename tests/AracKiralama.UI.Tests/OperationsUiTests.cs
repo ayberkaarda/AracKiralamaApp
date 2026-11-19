@@ -1,6 +1,7 @@
 using AracKiralama.Business.Services;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Tests.Support;
+using AracKiralama.UI.Theming;
 using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
@@ -109,6 +110,22 @@ public sealed class OperationsUiTests
         Assert.All(form.DayCells, c => Assert.Equal(form.ForeColor, c.ForeColor));
     });
 
+    /// <summary>
+    /// Every state has a pattern of its own besides its tint (free days are plain), so color is never the only
+    /// sign; under high contrast every state is drawn in the system's window colors only.
+    /// </summary>
+    [Fact]
+    public void Calendar_StatesDifferByPatternAndUseTheSystemColorsUnderHighContrast()
+    {
+        var states = Enum.GetValues<DayState>();
+        var patterns = states.Select(DayPainter.Pattern).ToList();
+
+        Assert.Equal(states.Length, patterns.Distinct().Count());
+        Assert.Null(DayPainter.Pattern(DayState.Free));
+        var contrast = ThemePalette.HighContrast();
+        Assert.All(states, state => Assert.Equal((SystemColors.Window, SystemColors.WindowText), DayPainter.Colors(contrast, state)));
+    }
+
     [Theory]
     [InlineData(9f)]
     [InlineData(12f)]
@@ -180,7 +197,7 @@ public sealed class OperationsUiTests
         Assert.True(save.Result);
         Assert.Equal(3, form.Selected!.Version);
         Assert.Equal("Başka yönetici", Find<TextBox>(form, "txtDescription").Text);
-        Assert.Contains(NoDialogs.Requested, r => r.Contains("başka biri tarafından değiştirildi", StringComparison.Ordinal));
+        Assert.Contains("başka biri tarafından değiştirildi", form.StatusBar.Text, StringComparison.Ordinal);
     });
 
     /// <summary>A refusal of the input (a typo, days a rental holds) keeps everything the admin typed, for a new and a selected record.</summary>
@@ -234,7 +251,9 @@ public sealed class OperationsUiTests
         reports.Requests[0].SetResult(ControlledReportService.Report(100m));
 
         Assert.Equal(200m, form.ShownReport!.Total.Revenue);
-        Assert.Equal("Toplam: 1 kiralama, 2 gün, 200,00 TL", Find<Label>(form, "lblTotal").Text);
+        Assert.Equal("Toplam: 1 kiralama, 2 gün, 200,00 TL", form.TotalText);
+        Assert.Equal("200,00 TL", Find<Label>(form, "lblTotalRevenue").Text);
+        Assert.Equal(form.ShownReport.Periods.Count, Find<ListBox>(form, "lstPeriods").Items.Count);
         Assert.Equal(form.ShownReport.Note, Find<Label>(form, "lblNote").Text);
         Assert.True(form.ExportCsvAsync().Result);
         var (path, content) = Assert.Single(written);
@@ -321,40 +340,70 @@ public sealed class OperationsUiTests
         Assert.True(Find<Button>(form, "btnMaintenance").Enabled);
     });
 
-    /// <summary>The contract button on a rental card fits its text at any font size and keeps its right edge next to the end button.</summary>
+    /// <summary>
+    /// The buttons on a rental card fit their text at any text size and never run into each other, and the stage
+    /// of the rental is written beside the car's name, however long the name is.
+    /// </summary>
     [Theory]
-    [InlineData(9f)]
-    [InlineData(14f)]
-    [InlineData(20f)]
-    [InlineData(28f)]
-    public void RentalCard_ContractButtonFitsItsTextAtAnyFontSize(float size) => Run(() =>
+    [InlineData(1F)]
+    [InlineData(1.5F)]
+    [InlineData(2F)]
+    public void RentalCard_ButtonsFitTheirTextAtAnyTextSize(float scale) => Run(() =>
     {
-        var (card, end, contract) = Infrastructure.RentalCards.Build(ControlledRentalService.Rental(9), underway: false, showRenter: false, () => Task.CompletedTask, () => Task.CompletedTask);
-        using (card)
-        using (var font = new Font("Segoe UI", size))
+        var previous = Theme.Current;
+        var previousScale = Theme.RenderScale;
+        Theme.Use(previous, scale);
+        try
         {
-            contract.Font = font;
+            var rental = ControlledRentalService.Rental(9) with { Model = "Uzun Şaseli Yüksek Tavanlı Panelvan Kombi" };
+            var (card, end, contract) = Infrastructure.RentalCards.Build(rental, underway: false, showRenter: true, () => Task.CompletedTask, () => Task.CompletedTask);
+            using (card)
+            {
+                card.SetBounds(0, 0, Theme.Px(card, Infrastructure.RentalCards.MinWidth), 400);
+                card.Height = card.GetPreferredSize(new Size(card.Width, 0)).Height;
+                CreateHandles(card);
+                card.PerformLayout();
 
-            var needed = TextRenderer.MeasureText(contract.Text, font);
-            Assert.True(needed.Width < contract.Width && needed.Height < contract.Height, $"{needed} does not fit {contract.Size} at {size} pt.");
-            Assert.True(contract.Width >= 120 && contract.Height >= 40);
-            Assert.Equal(end.Left - 10, contract.Right);
+                foreach (var button in new[] { end, contract })
+                {
+                    Assert.True(TextRenderer.MeasureText(button.Text, button.Font).Width < button.Width, $"{button.Text} is cut at {scale}x.");
+                }
+
+                Assert.False(end.Bounds.IntersectsWith(contract.Bounds));
+                Assert.Equal(Infrastructure.RentalCards.CancelText, end.Text);
+                Assert.Equal("Başlamadı", Find<Control>(card, "lblStage9").Text);
+            }
+        }
+        finally
+        {
+            Theme.Use(previous, previousScale);
         }
     });
 
-    /// <summary>The operation buttons below the car's picture size themselves from the font and stay inside the panel.</summary>
+    /// <summary>The operation buttons size themselves from their font: the calendar and the maintenance log sit under the car's fields, the report in the footer.</summary>
     [Fact]
     public void AdminPanel_OperationButtonsFitTheirText() => Run(() =>
     {
         using var form = new AdminPanel(new ControlledCarService(), new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
-        var panel = Find<FlowLayoutPanel>(form, "pnlOperations");
+        var panel = Find<Control>(form, "pnlOperations");
 
         foreach (var name in OperationButtons)
         {
             var button = Find<Button>(form, name);
             Assert.True(button.AutoSize);
             Assert.True(TextRenderer.MeasureText(button.Text, button.Font).Width < button.PreferredSize.Width);
-            Assert.Same(panel, button.Parent);
         }
+
+        Assert.Same(panel, Find<Button>(form, "btnCalendar").Parent);
+        Assert.Same(panel, Find<Button>(form, "btnMaintenance").Parent);
     });
+
+    private static void CreateHandles(Control control)
+    {
+        _ = control.Handle;
+        foreach (Control child in control.Controls)
+        {
+            CreateHandles(child);
+        }
+    }
 }
