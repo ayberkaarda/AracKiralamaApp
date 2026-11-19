@@ -85,7 +85,10 @@ public enum BlockKind
 /// <summary>Days [<see cref="StartDate"/>, <see cref="EndDate"/>) of a car that cannot be booked, and why.</summary>
 public readonly record struct BlockedRange(DateOnly StartDate, DateOnly EndDate, BlockKind Kind);
 
-/// <summary>What a rental contract shows: the rental, its car and the renter's name and contact data.</summary>
+/// <summary>
+/// What a rental contract shows: the rental, its car and the renter's contact data. The sign-in name is not
+/// part of it: it is half of the credentials and a contract is printed and handed out.
+/// </summary>
 public sealed record ContractData(
     int RentalId,
     RentalStatus Status,
@@ -94,7 +97,6 @@ public sealed record ContractData(
     int Year,
     string Color,
     string Plate,
-    string RenterName,
     string? RenterEmail,
     string? RenterPhone,
     DateOnly StartDate,

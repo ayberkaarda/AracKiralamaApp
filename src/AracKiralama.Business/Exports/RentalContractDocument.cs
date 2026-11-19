@@ -9,8 +9,8 @@ public sealed record RentalContract(ContractData Data, DateTime CreatedAt);
 
 /// <summary>
 /// Writes a <see cref="RentalContract"/> as a printable HTML page. It shows the rental, the car and the
-/// renter's name and contact data, and nothing else of the account: no account id, no password, no
-/// session data. Every value is HTML encoded and the page runs nothing (see <see cref="ExportFormat.HtmlPage"/>).
+/// renter's e-mail address and phone, and nothing else of the account: no sign-in name, no account id, no
+/// password, no session data. Every value is HTML encoded and the page runs nothing (see <see cref="ExportFormat.HtmlPage"/>).
 /// </summary>
 public static class RentalContractDocument
 {
@@ -47,7 +47,6 @@ public static class RentalContractDocument
             .Append(" - Durum: ").Append(ExportFormat.Html(Describe(data.Status))).Append("</p>\r\n");
 
         body.Append("<h2>Kiracı</h2>\r\n<table>\r\n");
-        Row(body, "Kullanıcı adı", data.RenterName);
         Row(body, "E-posta", data.RenterEmail ?? "-");
         Row(body, "Telefon", FormatPhone(data.RenterPhone));
         body.Append("</table>\r\n");
@@ -78,9 +77,7 @@ public static class RentalContractDocument
         }
 
         body.Append("</ol>\r\n")
-            .Append("<div class=\"signatures\"><div>Kiraya veren</div><div>Kiracı: ")
-            .Append(ExportFormat.Html(data.RenterName))
-            .Append("</div></div>\r\n");
+            .Append("<div class=\"signatures\"><div>Kiraya veren</div><div>Kiracı</div></div>\r\n");
 
         return new ExportFile("kiralama-sozlesmesi-" + number + ".html", ExportFormat.HtmlPage(title, Style, body.ToString()));
     }

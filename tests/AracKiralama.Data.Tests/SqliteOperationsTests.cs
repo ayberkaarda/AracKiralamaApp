@@ -101,7 +101,8 @@ public sealed class SqliteOperationsTests : IAsyncLifetime
         var foreign = await Assert.ThrowsAsync<BusinessRuleException>(() => contracts.CreateAsync(other, receipt.RentalId, Ct));
         var missing = await Assert.ThrowsAsync<BusinessRuleException>(() => contracts.CreateAsync(other, 999, Ct));
 
-        Assert.Contains("<td>ornek</td>", own, StringComparison.Ordinal);
+        Assert.Contains("<td>ornek@example.com</td>", own, StringComparison.Ordinal);
+        Assert.DoesNotContain("<td>ornek</td>", own, StringComparison.Ordinal);
         Assert.Contains("<td>2550,00 TL</td>", own, StringComparison.Ordinal);
         Assert.Equal("kiralama-sozlesmesi-" + receipt.RentalId.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".html", admins.SuggestedName);
         Assert.Equal(foreign.Message, missing.Message);

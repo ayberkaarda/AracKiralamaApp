@@ -58,7 +58,7 @@ public sealed class ExportTests
     [Fact]
     public void Contract_EncodesEveryValueAndRunsNothing()
     {
-        var data = Data() with { Brand = "<script>alert(1)</script>", RenterName = "a&b\"<img src=x onerror=alert(1)>" };
+        var data = Data() with { Brand = "<script>alert(1)</script>", RenterEmail = "a&b\"<img src=x onerror=alert(1)>" };
 
         var file = RentalContractDocument.ToHtml(new RentalContract(data, Created));
         var html = Encoding.UTF8.GetString(file.Content);
@@ -93,13 +93,17 @@ public sealed class ExportTests
 
         Assert.Contains("Araç Kiralama Sözleşmesi No 42", html, StringComparison.Ordinal);
         Assert.Contains("Düzenlenme: 02.03.2026 14:05", html, StringComparison.Ordinal);
-        Assert.Contains("<td>ornek</td>", html, StringComparison.Ordinal);
+        Assert.Contains("<td>ornek@example.com</td>", html, StringComparison.Ordinal);
         Assert.Contains("<td>555 123 4567</td>", html, StringComparison.Ordinal);
         Assert.Contains("<td>04.03.2026</td>", html, StringComparison.Ordinal);
         Assert.Contains("<td>07.03.2026</td>", html, StringComparison.Ordinal);
         Assert.Contains("<td>3</td>", html, StringComparison.Ordinal);
         Assert.Contains("<td>2551,50 TL</td>", html, StringComparison.Ordinal);
         Assert.DoesNotContain("Gerçek iade", html, StringComparison.Ordinal);
+        // The sign-in name is half of the credentials and stays out of a document that is printed and handed out.
+        Assert.DoesNotContain("Kullanıcı adı", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<td>ornek</td>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Kiracı: ornek", html, StringComparison.Ordinal);
         foreach (var internals in new[] { "KullaniciID", "Sifre", "Şifre", "PBKDF2", "OturumSurumu", "Server=", "Password" })
         {
             Assert.DoesNotContain(internals, html, StringComparison.OrdinalIgnoreCase);
@@ -125,7 +129,6 @@ public sealed class ExportTests
         2021,
         "Beyaz",
         "00 DMO 001",
-        "ornek",
         "ornek@example.com",
         "5551234567",
         new DateOnly(2026, 3, 4),

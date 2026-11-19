@@ -86,7 +86,7 @@ measures only; it is not a legal assessment.
 |---|---|---|
 | CSV formula injection through car names, plates or descriptions | Every CSV field is quoted, inner quotes are doubled, and a value starting with `=`, `+`, `-`, `@`, a tab, a carriage return or a line feed (also after spaces) gets a leading `'`, so spreadsheets read it as text (tested) | Mitigated |
 | Script injection through a contract | Every value of the contract page is HTML encoded; the page has no script, loads no resource and carries a Content-Security-Policy (`default-src 'none'`, its own style block pinned by hash, `img-src 'none'`, `base-uri 'none'`, `form-action 'none'`) and `no-referrer` (tested) | Mitigated |
-| Data leaking through exported files | A contract shows the rental, the car and the renter's name and contact data, nothing else of the account (no id, password or session data). The report holds no personal data. Files are written to a temporary file and moved over the target only when complete. Whoever receives a contract receives the renter's contact data; share it as such | Documented |
+| Data leaking through exported files | A contract shows the rental, the car and the renter's e-mail address and phone, nothing else of the account: no sign-in name (half of the credentials, and a contract is printed and handed out), id, password or session data. The report holds no personal data. Files are written to a temporary file and moved over the target only when complete. Whoever receives a contract receives the renter's contact data; share it as such | Documented |
 | Revenue data seen by customers | The report is admin only and is refused before the database is read | Mitigated |
 
 ## Car pictures

@@ -69,10 +69,10 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   edilen kiralamalar gelir getirmez). "CSV Olarak Kaydet" ekrandaki raporu ";" ayraçlı UTF-8 CSV olarak kaydeder; her
   alan tırnak içindedir ve `=`, `+`, `-`, `@` ya da bir kontrol karakteriyle başlayan değer formül olarak değil metin
   olarak yazılır.
-- ✅ **Kiralama sözleşmesi** (her kiralama kartında "Sözleşme"): kiralamayı, aracı ve kiracının adını ve iletişim
-  bilgilerini gösteren yazdırılabilir bir HTML sayfası. Her değer HTML olarak kodlanır; sayfa betik çalıştırmaz, hiçbir
-  şey yüklemez ve Content-Security-Policy ile yalnızca kendi stil bloğuna izin verir; hesap numarası, şifre veya oturum
-  bilgisi içermez. Müşteriler yalnızca kendi sözleşmelerini, yöneticiler hepsini alır.
+- ✅ **Kiralama sözleşmesi** (her kiralama kartında "Sözleşme"): kiralamayı, aracı ve kiracının e-posta adresini ve
+  telefonunu gösteren yazdırılabilir bir HTML sayfası. Her değer HTML olarak kodlanır; sayfa betik çalıştırmaz, hiçbir
+  şey yüklemez ve Content-Security-Policy ile yalnızca kendi stil bloğuna izin verir; kullanıcı adı, hesap numarası,
+  şifre veya oturum bilgisi içermez. Müşteriler yalnızca kendi sözleşmelerini, yöneticiler hepsini alır.
 
 ### Güvenlik
 

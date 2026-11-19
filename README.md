@@ -66,8 +66,9 @@ layers; database access uses EF Core, and the database is created, migrated or u
   "CSV Olarak Kaydet" saves the report on the screen as UTF-8 CSV with ";" separators; every field is quoted and a
   value starting with `=`, `+`, `-`, `@` or a control character is written as text, never as a formula.
 - ✅ **Rental contract** ("Sözleşme" on every rental card): a printable HTML page with the rental, the car and the
-  renter's name and contact data. Every value is HTML encoded, the page runs no script, loads nothing and allows only
-  its own style block through a Content-Security-Policy; it contains no account id, password or session data.
+  renter's e-mail address and phone. Every value is HTML encoded, the page runs no script, loads nothing and allows
+  only its own style block through a Content-Security-Policy; it contains no sign-in name, account id, password or
+  session data.
   Customers get their own contracts only; admins any.
 
 ### Security

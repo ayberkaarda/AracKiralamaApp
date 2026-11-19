@@ -221,7 +221,6 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
                 car.Year,
                 car.Color,
                 car.Plate,
-                user.UserName,
                 user.Email,
                 user.Phone,
                 rental.StartDate,
