@@ -54,7 +54,7 @@ public sealed class AuthServiceTests
 
         // Wrong password.
         Setup(Account(hash));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, LoginPolicy.MaxFailedAttempts, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<AccountCredentials>(a => a.Id == 7), LoginPolicy.MaxFailedAttempts, LoginPolicy.LockoutDuration, It.IsAny<CancellationToken>())).ReturnsAsync(true);
         messages.Add((await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(UserName, "Yanlis.Sifre1", Ct))).Message);
 
         // Locked account, even with the right password.
@@ -78,11 +78,11 @@ public sealed class AuthServiceTests
     public async Task SignIn_WrongPassword_CountsTheFailureWithAFifteenMinuteLock()
     {
         Setup(Account(_hasher.Hash(Password)));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<AccountCredentials>(a => a.Id == 7), 5, TimeSpan.FromMinutes(15), It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => Service().SignInAsync(UserName, "Yanlis.Sifre1", Ct));
 
-        _users.Verify(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>()), Times.Once);
+        _users.Verify(u => u.RecordFailedLoginAsync(It.Is<AccountCredentials>(a => a.Id == 7), 5, TimeSpan.FromMinutes(15), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -205,7 +205,7 @@ public sealed class AuthServiceTests
         var account = Account(_hasher.Hash(Password));
         ActiveSession(7, 0);
         _users.Setup(u => u.FindByIdAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(account);
-        _users.Setup(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<AccountCredentials>(a => a.Id == 7), 5, TimeSpan.FromMinutes(15), It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
             () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, 0), "Yanlis.Sifre1", "Yeni.Sifre12", "Yeni.Sifre12", Ct));

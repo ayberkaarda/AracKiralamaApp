@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AracKiralama.Data.Repositories;
 
-internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFactory) : IUserRepository
+internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFactory, TimeProvider timeProvider) : IUserRepository
 {
     public async Task<AccountCredentials?> FindByUserNameAsync(string userName, CancellationToken cancellationToken = default)
     {
@@ -359,19 +359,60 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         }
     }
 
-    public async Task RecordFailedLoginAsync(int userId, int maxAttempts, DateTime lockoutEnd, CancellationToken cancellationToken = default)
+    public async Task<bool> RecordFailedLoginAsync(
+        AccountCredentials verified,
+        int maxAttempts,
+        TimeSpan lockoutDuration,
+        CancellationToken cancellationToken = default)
     {
-        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(verified);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
 
-        // One UPDATE statement, so concurrent failures cannot lose increments.
-        await db.Users
-            .Where(u => u.Id == userId)
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var id = verified.Id;
+        var verifiedHash = verified.PasswordHash;
+        var verifiedFormat = verified.PasswordFormat;
+        var verifiedVersion = verified.SessionVersion;
+
+        // One UPDATE statement, so concurrent failures cannot lose increments, and its WHERE clause is the
+        // final decision: SQL Server evaluates it under the row's update lock, so of failures that all read
+        // the account unlocked, the one that locks it makes the rest match no row. A password set or a role
+        // changed since the check (the session version) also matches no row, so a delayed failure cannot
+        // undo an admin's reset.
+        if (db.Database.IsSqlServer())
+        {
+            // The lock is checked and its end computed with the database's clock at the write.
+            var seconds = (int)Math.Ceiling(lockoutDuration.TotalSeconds);
+            var format = (int)verifiedFormat;
+            var counted = await db.Database.ExecuteSqlAsync(
+                $"""
+                UPDATE dbo.Kullanicilar
+                SET BasarisizGiris = CASE WHEN BasarisizGiris + 1 >= {maxAttempts} THEN 0 ELSE BasarisizGiris + 1 END,
+                    KilitBitis = CASE WHEN BasarisizGiris + 1 >= {maxAttempts} THEN DATEADD(SECOND, {seconds}, SYSUTCDATETIME()) ELSE KilitBitis END
+                WHERE KullaniciID = {id}
+                  AND (KilitBitis IS NULL OR KilitBitis <= SYSUTCDATETIME())
+                  AND Sifre = {verifiedHash} AND SifreBicimi = {format} AND OturumSurumu = {verifiedVersion}
+                """,
+                cancellationToken).ConfigureAwait(false);
+            return counted == 1;
+        }
+
+        // Other providers (the tests' SQLite) have no database clock and use the computer's.
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var lockoutEnd = now + lockoutDuration;
+        var updated = await db.Users
+            .Where(u => u.Id == id
+                && (u.LockoutEnd == null || u.LockoutEnd <= now)
+                && u.PasswordHash == verifiedHash
+                && u.PasswordFormat == verifiedFormat
+                && u.SessionVersion == verifiedVersion)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.LockoutEnd, u => u.FailedLoginCount + 1 >= maxAttempts ? lockoutEnd : u.LockoutEnd)
                     .SetProperty(u => u.FailedLoginCount, u => u.FailedLoginCount + 1 >= maxAttempts ? 0 : u.FailedLoginCount + 1),
                 cancellationToken)
             .ConfigureAwait(false);
+        return updated == 1;
     }
 
     public async Task<bool> RecordSuccessfulLoginAsync(

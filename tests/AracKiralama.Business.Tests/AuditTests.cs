@@ -66,7 +66,7 @@ public sealed class AuditTests
             .ReturnsAsync(new AccountCredentials(7, "ornek", UserRole.Admin, hash, PasswordFormat.Pbkdf2, 0, null, 0));
         _users.Setup(u => u.FindByUserNameAsync("yaris", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AccountCredentials(9, "yaris", UserRole.User, hash, PasswordFormat.Pbkdf2, 0, null, 0));
-        _users.Setup(u => u.RecordFailedLoginAsync(7, It.IsAny<int>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _users.Setup(u => u.RecordFailedLoginAsync(It.Is<AccountCredentials>(a => a.Id == 7), It.IsAny<int>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         _users.Setup(u => u.RecordSuccessfulLoginAsync(It.Is<AccountCredentials>(a => a.Id == 9), It.IsAny<DateTime>(), null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 

@@ -87,10 +87,15 @@ public interface IUserRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Counts a failed sign-in atomically. When the count reaches <paramref name="maxAttempts"/> the
-    /// account is locked until <paramref name="lockoutEnd"/> and the count starts again from zero.
+    /// Counts a failed sign-in of <paramref name="verified"/> in one conditional UPDATE. It is counted only
+    /// while the account is not locked by the database's clock at the moment of the write and still has the
+    /// password value, format and session version that were checked: a failure that arrives at an account
+    /// locked meanwhile, or after an admin set a new password, changes nothing. When the count reaches
+    /// <paramref name="maxAttempts"/> the account is locked for <paramref name="lockoutDuration"/> from the
+    /// database's clock at the write and the count starts again from zero.
     /// </summary>
-    Task RecordFailedLoginAsync(int userId, int maxAttempts, DateTime lockoutEnd, CancellationToken cancellationToken = default);
+    /// <returns>Whether the failure was counted.</returns>
+    Task<bool> RecordFailedLoginAsync(AccountCredentials verified, int maxAttempts, TimeSpan lockoutDuration, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Records a successful sign-in in one conditional UPDATE: only while the account is not locked at
