@@ -211,6 +211,39 @@ public sealed class SqlServerConcurrencyTests
         Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciAdi = N'uye' AND Rol = N'Admin'", Ct));
     }
 
+    /// <summary>
+    /// A phone change from a form loaded before has passed the service's version check and waits for the
+    /// admin role lock while another admin corrects the e-mail address. The waiting change's conditional
+    /// UPDATE finds a newer edit version and writes nothing, so the old address does not come back; the
+    /// customer's sessions stay valid, as a change of contact data leaves the session version alone.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccount_ContactDataEditedWhileWaitingForTheLock_IsRefusedAsStale()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var founder = await SetUpAdminAsync(a);
+        var customer = await RegisterAsync(a, "uye", 1);
+        var version = await AccountVersionAsync(a, customer.UserId);
+        var gate = CommandGate.BeforeAppLock("AracKiralama.AdminRoles");
+        await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var stale = bApp.GetRequiredService<IAccountService>().UpdateAsync(
+            founder, customer.UserId, version, new AccountInput("uye", null, "uye@example.com", "5540000099", UserRole.User), Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        await a.GetRequiredService<IAccountService>().UpdateAsync(
+            founder, customer.UserId, version, new AccountInput("uye", null, "duzeltilmis@example.com", "5540000001", UserRole.User), Ct);
+        gate.Release();
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => stale);
+        Assert.Equal((AccountService.ChangedElsewhere, true), (error.Message, error.IsStale));
+        Assert.Equal(1, await database.ScalarAsync(
+            "SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciID = @id AND Eposta = N'duzeltilmis@example.com' AND Telefon = '5540000001' AND DuzenlemeSurumu = 1 AND OturumSurumu = 0",
+            Ct,
+            ("@id", customer.UserId)));
+    }
+
     /// <summary>The same for a car: an admin demoted while the change waits for the car's lock changes nothing.</summary>
     [Fact]
     public async Task UpdateCar_ByAnAdminDemotedMeanwhile_IsRefused()

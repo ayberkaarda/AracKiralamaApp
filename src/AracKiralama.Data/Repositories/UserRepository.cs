@@ -50,7 +50,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.SessionVersion))
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.EditVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -61,7 +61,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .OrderBy(u => u.Id)
-            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.SessionVersion))
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.EditVersion))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -157,13 +157,14 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
             var hash = update.NewPasswordHash;
             var newPassword = hash is not null;
 
-            // The WHERE clause is the final decision: the account still has the session version the form
-            // loaded (no role or password change since, so a stale form cannot give back a role another
-            // admin just removed), and an admin keeps the role or another admin exists. The admin role
-            // lock above keeps a concurrent demotion from passing the same check.
+            // The WHERE clause is the final decision: the account still has the edit version the form
+            // loaded (no edit of any field since, so a stale form can neither give back a role another
+            // admin just removed nor restore an e-mail address another admin just corrected), and an admin
+            // keeps the role or another admin exists. The admin role lock above keeps a concurrent
+            // demotion from passing the same check.
             var updated = await db.Users
                 .Where(u => u.Id == id
-                    && u.SessionVersion == expectedVersion
+                    && u.EditVersion == expectedVersion
                     && (keepsAdmin || u.Role != UserRole.Admin || db.Users.Any(o => o.Id != id && o.Role == UserRole.Admin)))
                 .ExecuteUpdateAsync(
                     s =>
@@ -171,6 +172,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
                         // A new role or password ends every open session of the account for good: the
                         // version is read before the SET, so it rises exactly when the stored role differs.
                         s.SetProperty(u => u.SessionVersion, u => newPassword || u.Role != role ? u.SessionVersion + 1 : u.SessionVersion)
+                            .SetProperty(u => u.EditVersion, u => u.EditVersion + 1)
                             .SetProperty(u => u.UserName, update.UserName)
                             .SetProperty(u => u.Email, update.Email)
                             .SetProperty(u => u.Phone, update.Phone)
@@ -195,7 +197,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
 
             var version = await db.Users
                 .Where(u => u.Id == id)
-                .Select(u => (int?)u.SessionVersion)
+                .Select(u => (int?)u.EditVersion)
                 .SingleOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false);
             return version switch
@@ -259,8 +261,9 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         var verifiedFormat = verified.PasswordFormat;
 
         // The WHERE clause is the final decision: the password is still the verified one and the changing
-        // session is still current (no role change or other password change since). The new version ends
-        // every other session of the account in the same statement.
+        // session is still current (no role change or other password change since). The new session
+        // version ends every other session of the account in the same statement; the new edit version
+        // tells an admin's form loaded before that it is stale.
         var updated = await db.Users
             .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat && u.SessionVersion == sessionVersion)
             .ExecuteUpdateAsync(
@@ -268,7 +271,8 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
                     .SetProperty(u => u.PasswordHash, newPasswordHash)
                     .SetProperty(u => u.PasswordFormat, PasswordFormat.Pbkdf2)
                     .SetProperty(u => u.FailedLoginCount, 0)
-                    .SetProperty(u => u.SessionVersion, u => u.SessionVersion + 1),
+                    .SetProperty(u => u.SessionVersion, u => u.SessionVersion + 1)
+                    .SetProperty(u => u.EditVersion, u => u.EditVersion + 1),
                 cancellationToken)
             .ConfigureAwait(false);
         return updated == 1 ? sessionVersion + 1 : null;

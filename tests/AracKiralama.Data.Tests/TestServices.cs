@@ -59,12 +59,12 @@ internal static class TestServices
             new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", plate, dailyPrice, null, true),
             TestContext.Current.CancellationToken);
 
-    /// <summary>The account's session version as stored now, as the admin's form loads it with the account.</summary>
+    /// <summary>The account's edit version as stored now, as the admin's form loads it with the account.</summary>
     public static async Task<int> AccountVersionAsync(IServiceProvider provider, int userId)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var db = await provider.GetRequiredService<IDbContextFactory<AracDbContext>>().CreateDbContextAsync(ct);
-        return await db.Users.Where(u => u.Id == userId).Select(u => u.SessionVersion).SingleAsync(ct);
+        return await db.Users.Where(u => u.Id == userId).Select(u => u.EditVersion).SingleAsync(ct);
     }
 
     /// <summary>The car's version as stored now, as the admin's form loads it with the car.</summary>

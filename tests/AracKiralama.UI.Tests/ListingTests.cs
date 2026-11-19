@@ -242,7 +242,7 @@ public sealed class ListingTests
         form.SelectUser(form.ShownUsers[0]);
 
         accounts.Users[0] = loaded with { Role = UserRole.User, Version = 1 };
-        accounts.UpdateFailure = Business.BusinessRuleException.Stale("Kullanıcının rolü veya şifresi siz düzenlerken başka biri tarafından değiştirildi.");
+        accounts.UpdateFailure = Business.BusinessRuleException.Stale("Kullanıcı siz düzenlerken başka biri tarafından değiştirildi.");
         Find<TextBox>(form, "txtPhone").Text = "5551234567";
         Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
 

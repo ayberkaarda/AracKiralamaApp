@@ -445,6 +445,50 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Admins A and B load the same customer. A corrects the e-mail address; then B saves a new phone
+    /// number from the form loaded before, which still carries the old address. Every account edit raises
+    /// the edit version, so B's save is refused as stale and A's correction stays. A change of contact data
+    /// is no reason to end the customer's sessions: the session version stays as it was.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccount_FromAFormLoadedBeforeAnEmailFix_IsRefusedAndKeepsTheFix()
+    {
+        var accounts = _db.Get<IAccountService>();
+        await accounts.AddAsync(_admin, new AccountInput("badmin", Password, null, null, UserRole.Admin), Ct);
+        var bSession = await _db.Get<IAuthService>().SignInAsync("badmin", Password, Ct);
+        var loadedByA = (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == _customer.UserId);
+        var loadedByB = (await accounts.GetAllAsync(bSession, Ct)).Single(u => u.Id == _customer.UserId);
+
+        await accounts.UpdateAsync(_admin, loadedByA.Id, loadedByA.Version, new AccountInput(loadedByA.UserName, null, "duzeltilmis@example.com", loadedByA.Phone, loadedByA.Role), Ct);
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => accounts.UpdateAsync(bSession, loadedByB.Id, loadedByB.Version, new AccountInput(loadedByB.UserName, null, loadedByB.Email, "5540000099", loadedByB.Role), Ct));
+
+        Assert.Equal(AccountService.ChangedElsewhere, error.Message);
+        Assert.True(error.IsStale);
+        var stored = (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == _customer.UserId);
+        Assert.Equal(("duzeltilmis@example.com", loadedByA.Phone, loadedByA.Version + 1), (stored.Email, stored.Phone, stored.Version));
+        Assert.Empty(await _db.Get<IRentalService>().GetMyActiveRentalsAsync(_customer, Ct));
+    }
+
+    /// <summary>
+    /// The same race decided inside the write: the e-mail fix committed after the stale form passed the
+    /// service's check. The conditional UPDATE finds a newer edit version and writes nothing.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccountRepository_AfterAContactDataEdit_WritesNothing()
+    {
+        var users = _db.Get<IUserRepository>();
+        var loaded = (await users.GetSummaryAsync(_customer.UserId, Ct))!;
+        await _db.Get<IAccountService>().UpdateAsync(_admin, loaded.Id, loaded.Version, new AccountInput(loaded.UserName, null, "duzeltilmis@example.com", loaded.Phone, loaded.Role), Ct);
+
+        var outcome = await users.UpdateAsync(_admin.Actor, new AccountUpdate(loaded.Id, loaded.Version, loaded.UserName, loaded.Email, "5540000099", loaded.Role, null), Ct);
+
+        Assert.Equal(AccountUpdateOutcome.ChangedElsewhere, outcome);
+        var stored = (await users.GetSummaryAsync(_customer.UserId, Ct))!;
+        Assert.Equal(("duzeltilmis@example.com", loaded.Phone), (stored.Email, stored.Phone));
+    }
+
+    /// <summary>
     /// The same race decided inside the write: the form's version passed the service's check, but the
     /// demotion committed before the UPDATE. The conditional UPDATE matches no row and nothing is written.
     /// </summary>

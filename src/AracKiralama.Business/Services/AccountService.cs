@@ -20,7 +20,7 @@ public interface IAccountService
 
     /// <summary>
     /// Changes an account; the last admin keeps the admin role. <paramref name="expectedVersion"/> is the
-    /// <see cref="UserSummary.Version"/> the form loaded: when the account's role or password changed since,
+    /// <see cref="UserSummary.Version"/> the form loaded: when the account was edited since, in any field,
     /// nothing is written and the form has to load the account again.
     /// </summary>
     /// <returns>
@@ -45,7 +45,7 @@ internal sealed class AccountService(
     internal const string LastAdmin = "Sistemde en az bir yönetici kalmalıdır; son yöneticinin rolü değiştirilemez.";
     internal const string AdminNotDeletable = "Yönetici rolündeki kullanıcılar silinemez.";
     internal const string HasRentals = "Kiralama geçmişi olan kullanıcı silinemez.";
-    internal const string ChangedElsewhere = "Kullanıcının rolü veya şifresi siz düzenlerken başka biri tarafından değiştirildi. Güncel hali yüklendi; lütfen değişikliğinizi yeniden yapın.";
+    internal const string ChangedElsewhere = "Kullanıcı siz düzenlerken başka biri tarafından değiştirildi. Güncel hali yüklendi; lütfen değişikliğinizi yeniden yapın.";
 
     public async Task<IReadOnlyList<UserSummary>> GetAllAsync(UserSession session, CancellationToken cancellationToken = default)
     {
@@ -121,7 +121,7 @@ internal sealed class AccountService(
             case AccountUpdateOutcome.Updated:
                 audit.Record(AuditEvent.AccountChanged, AuditRole.Admin);
 
-                // The repository raised the version exactly then, so the admin's own session has ended.
+                // The repository raised the session version exactly then, so the admin's own session has ended.
                 return userId == session.UserId && (newHash is not null || input.Role != stored.Role);
             case AccountUpdateOutcome.LastAdmin:
                 throw new BusinessRuleException(LastAdmin);

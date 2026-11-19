@@ -49,7 +49,8 @@ public sealed record SessionState(UserRole Role, int SessionVersion);
 
 /// <summary>
 /// An account as the admin's account list shows it; the password never leaves the database.
-/// <see cref="Version"/> is the account's session version when it was read: a change sends it back, so
-/// a form loaded before a role or password change elsewhere cannot write over that change.
+/// <see cref="Version"/> is the account's edit version when it was read: a change sends it back, so a
+/// form loaded before any other edit of the account (also one of the e-mail address or the phone number
+/// only) cannot write over that edit.
 /// </summary>
 public sealed record UserSummary(int Id, string UserName, string? Email, string? Phone, UserRole Role, int Version);
