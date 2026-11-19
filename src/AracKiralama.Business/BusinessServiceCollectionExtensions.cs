@@ -49,6 +49,7 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IMaintenanceService, MaintenanceService>();
         services.AddSingleton<IAvailabilityService, AvailabilityService>();
         services.AddSingleton<IReportService, ReportService>();
+        services.AddSingleton<IContractService, ContractService>();
         return services;
     }
 }

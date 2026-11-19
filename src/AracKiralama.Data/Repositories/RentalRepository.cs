@@ -199,6 +199,33 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
             .ToList();
     }
 
+    public async Task<ContractData?> GetContractDataAsync(int rentalId, int? ownerId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var query =
+            from rental in Owned(db.Rentals.AsNoTracking(), ownerId)
+            join car in db.Cars.AsNoTracking() on rental.CarId equals car.Id
+            join user in db.Users.AsNoTracking() on rental.UserId equals user.Id
+            where rental.Id == rentalId
+            select new ContractData(
+                rental.Id,
+                rental.Status,
+                car.Brand,
+                car.Model,
+                car.Year,
+                car.Color,
+                car.Plate,
+                user.UserName,
+                user.Email,
+                user.Phone,
+                rental.StartDate,
+                rental.EndDate,
+                rental.ReturnedOn,
+                rental.Price);
+
+        return await query.SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Whether an active rental of the car shares a day with [<paramref name="start"/>,
     /// <paramref name="end"/>): it starts before the new one ends and ends after the new one starts.

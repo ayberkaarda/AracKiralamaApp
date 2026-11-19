@@ -39,6 +39,12 @@ public interface IRentalRepository
     /// share a day with [<paramref name="from"/>, <paramref name="until"/>), with their kind, in order of their start.
     /// </summary>
     Task<IReadOnlyList<BlockedRange>> GetBlockedRangesAsync(int carId, DateOnly from, DateOnly until, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The contract data of a rental in any state, or <see langword="null"/> when it does not exist or,
+    /// with <paramref name="ownerId"/> set, belongs to another account.
+    /// </summary>
+    Task<ContractData?> GetContractDataAsync(int rentalId, int? ownerId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
