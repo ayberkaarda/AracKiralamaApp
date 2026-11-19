@@ -69,9 +69,10 @@ layers; database access uses EF Core, and the database is created, migrated or u
   another admin's change (a new price, the car taken off the list) is refused and the car is loaded again.
 - ✅ **Accounts** ("Hesaplar"): add, change and delete accounts with role,
   e-mail and phone (masked in the list); a new password replaces the old one and lifts a lock. Admins and accounts
-  with rentals cannot be deleted, and the last admin keeps the admin role. A change from a form opened before the
-  account's role or password changed elsewhere is refused and the account is loaded again, so a stale form cannot give
-  back a role another admin just removed. An admin who changes their own role or password is signed out.
+  with rentals cannot be deleted, and the last admin keeps the admin role. A change from a form opened before any
+  other edit of the account is refused and the account is loaded again, so a stale form can neither give back a role
+  another admin just removed nor bring back an e-mail address another admin just corrected. An admin who changes
+  their own role or password is signed out.
 - ✅ **Rentals** ("Kiralamalar"): every active rental with its renter, filterable by brand, gearbox and fuel type.
 
 ### Calendar, maintenance, reports and contracts
@@ -86,7 +87,8 @@ layers; database access uses EF Core, and the database is created, migrated or u
   its days, description and optional cost. The car cannot be booked on those days, and a record cannot take days of
   an active rental or of another active record of the car. A record entered by mistake is cancelled, never deleted. A
   save from a form opened before another admin's change is refused and the record is loaded again; any other refusal
-  keeps what the admin typed. Times are stamped with the database's clock when the write happens.
+  keeps what the admin typed. Times are stamped, and the day limits checked, with the database's clock when the
+  write happens.
 - ✅ **Revenue report** ("Gelir Raporu", admin): rentals by month or day and by car between two days, with the
   agreed price of every rental picked up by today (returned or under way) in the period of its pick-up day; the
   screen starts with this month up to the database's today. Rentals that have not started yet can still be cancelled
@@ -105,12 +107,17 @@ layers; database access uses EF Core, and the database is created, migrated or u
 - ✅ Passwords are stored as PBKDF2-HMAC-SHA256 hashes (600,000 iterations, random salt); plain text passwords of
   the original application are replaced with a hash on the next successful sign-in.
 - ✅ 5 failed sign-ins lock the account for 15 minutes; unknown accounts, wrong passwords and locked accounts get
-  the same answer. Locks and booking days are decided with the database's clock.
+  the same answer. A failure is counted only while the account is unlocked and unchanged at the moment of the write,
+  so failures that arrive together lock it once and failures held up behind an admin's password reset do not count.
+- ✅ Locks, booking days, the cancel-or-return decision, maintenance day limits and the newest model year are decided
+  with the database's clock; the decisions that depend on the car's calendar read it after they got the car's lock, so
+  a request that waited across midnight decides with the new day. The booking screen takes its limits from it too.
 - ✅ Every call is checked against the signed-in session, and every privileged operation reads the account's role
   again from the database: a deleted or demoted admin's open session loses its rights at once. Customers reach only
   their own rentals; another account's rental gets the same answer as a missing one.
 - ✅ Every account has a session version, raised by every role change, every password an admin sets and the
-  account's own password change. A session from before the change is refused for good, also when the change is
+  account's own password change, and an edit version, raised by every edit of the account, which the admin's form
+  sends back. A session from before the change is refused for good, also when the change is
   undone (an admin demoted and promoted again signs in again). Every write, also the own password change, checks the
   version, the role and the account inside its own statement or transaction. "Şifre Değiştir" ends the account's
   other sessions, for example one opened elsewhere with a stolen password; the window that changed it keeps working.
@@ -317,8 +324,9 @@ The design-time factory reads `ARAC_CONNECTION` and otherwise uses a local SQL S
 migrations with the database owner's connection; the application's restricted login has no DDL rights.
 
 The migrations after the first one are `AddSessionVersion` (the accounts' session version, `OturumSurumu`),
-`AddMaintenanceLog` (the `AracBakim` table of the maintenance and damage log) and `AddCarVersion` (the cars' version,
-`Surum`, which refuses a change from a stale form). After applying them run `docs/grant-app-login.sql` again, so the
+`AddMaintenanceLog` (the `AracBakim` table of the maintenance and damage log), `AddCarVersion` (the cars' version,
+`Surum`, which refuses a change from a stale form) and `AddAccountEditVersion` (the accounts' edit version,
+`DuzenlemeSurumu`, which refuses an account change from a stale form). After applying them run `docs/grant-app-login.sql` again, so the
 application's login can use the new table; new columns are covered by the existing table rights.
 
 **Upgrading the original application's database:** `dotnet ef database update` does **not** upgrade it. Such a
@@ -394,8 +402,10 @@ See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the threat model.
 
 - Passwords are hashed with PBKDF2; the stored format is kept in its own column, so a value is never read in
   another format.
-- Lockout counters are updated atomically, and a successful sign-in is written only while the account is still
-  unlocked and unchanged, so concurrent attempts cannot clear a fresh lock.
+- A failed sign-in is counted by one conditional `UPDATE` that matches only while the account is unlocked by the
+  database's clock and still has the checked password and session version, and computes the lock's end with that
+  clock; a successful sign-in is written only while the account is still unlocked and unchanged, so concurrent
+  attempts can neither clear a fresh lock nor count against a locked or reset account.
 - Bookings take an application lock per car (`sp_getapplock`) and check for shared days inside the same
   transaction; a filtered unique index backs it up. The database command timeout (90 seconds) is longer than any
   lock wait, so a busy car ends with "İşlem meşgul" (Operation busy) instead of a timeout.

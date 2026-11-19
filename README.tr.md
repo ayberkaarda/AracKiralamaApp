@@ -71,9 +71,10 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   yeniden yüklenir.
 - ✅ **Hesaplar** ("Hesaplar"): rol, e-posta ve telefonla (listede maskeli) hesap ekleme,
   güncelleme ve silme; yeni şifre eskisinin yerine geçer ve kilidi kaldırır. Yöneticiler ve kiralaması olan hesaplar
-  silinemez, son yönetici yönetici rolünü korur. Hesabın rolü veya şifresi başka bir yerde değişmeden önce açılmış bir
-  formdan yapılan değişiklik reddedilir ve hesap yeniden yüklenir; böylece eski bir form, başka bir yöneticinin az önce
-  aldığı rolü geri veremez. Kendi rolünü veya şifresini değiştiren yöneticinin oturumu kapatılır.
+  silinemez, son yönetici yönetici rolünü korur. Hesap başka bir yerde düzenlenmeden önce açılmış bir formdan yapılan
+  değişiklik reddedilir ve hesap yeniden yüklenir; böylece eski bir form, başka bir yöneticinin az önce aldığı rolü
+  geri veremez ve az önce düzelttiği e-posta adresini eski hâline döndüremez. Kendi rolünü veya şifresini değiştiren
+  yöneticinin oturumu kapatılır.
 - ✅ **Kiralamalar** ("Kiralamalar"): tüm aktif kiralamalar kiracılarıyla; marka, vites tipi ve yakıt tipine göre
   filtrelenebilir.
 
@@ -89,7 +90,8 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   açıklaması ve isteğe bağlı maliyetiyle. Araç bu günlerde kiralanamaz ve bir kayıt aktif bir kiralamanın veya aracın
   başka bir aktif kaydının günlerini alamaz. Yanlış girilen kayıt silinmez, iptal edilir. Başka bir yöneticinin
   değişikliğinden önce açılmış bir formun kaydı reddedilir ve kayıt yeniden yüklenir; başka her retten sonra
-  yöneticinin yazdıkları formda kalır. Zamanlar, yazma anında veritabanının saatiyle damgalanır.
+  yöneticinin yazdıkları formda kalır. Zamanlar yazma anında veritabanının saatiyle damgalanır ve gün sınırları da o
+  anda bu saatle denetlenir.
 - ✅ **Gelir raporu** ("Gelir Raporu", yönetici): iki gün arasındaki kiralamalar aylara veya günlere ve araçlara
   göre; bugüne kadar teslim alınmış her kiralama (iade edilmiş veya sürmekte olan), rezervasyonda belirlenen ücretiyle
   alış gününün dönemine yazılır; ekran bu aydan veritabanının bugününe kadarki aralıkla açılır. Henüz başlamamış
@@ -108,12 +110,17 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ Şifreler PBKDF2-HMAC-SHA256 özetleri (600.000 tekrar, rastgele tuz) olarak saklanır; eski uygulamanın düz metin
   şifreleri bir sonraki başarılı girişte özetle değiştirilir.
 - ✅ 5 hatalı giriş hesabı 15 dakika kilitler; bilinmeyen hesap, yanlış şifre ve kilitli hesap aynı cevabı alır.
-  Kilitler ve kiralama günleri veritabanının saatiyle belirlenir.
+  Hatalı giriş yalnızca hesap yazma anında kilitsiz ve değişmemişse sayılır; aynı anda gelen hatalı girişler hesabı
+  bir kez kilitler, yöneticinin şifre sıfırlamasının arkasında kalan hatalı girişler sayılmaz.
+- ✅ Kilitler, kiralama günleri, iptal mi iade mi kararı, bakım günlerinin sınırları ve en yeni model yılı veritabanının
+  saatiyle belirlenir; aracın takvimine bağlı kararlar bu saati aracın kilidini aldıktan sonra okur, böylece gece
+  yarısını kilit beklerken geçen bir istek yeni günle karar verir. Kiralama ekranı da sınırlarını bu saatten alır.
 - ✅ Her çağrı oturum açmış hesaba göre denetlenir ve her yetkili işlem hesabın rolünü veritabanından yeniden okur:
   silinen ya da yetkisi alınan bir yöneticinin açık oturumu yetkilerini hemen kaybeder. Müşteriler yalnızca kendi
   kiralamalarına ulaşır; başka bir hesabın kiralaması, var olmayan bir kiralamayla aynı cevabı alır.
 - ✅ Her hesabın bir oturum sürümü vardır; her rol değişikliği, yöneticinin belirlediği her şifre ve hesabın kendi
-  şifre değişikliği bu sürümü artırır. Değişiklikten önceki oturum, değişiklik geri alınsa bile kalıcı olarak
+  şifre değişikliği bu sürümü artırır. Ayrıca hesabın her düzenlenişinde artan ve yöneticinin formunun geri gönderdiği
+  bir düzenleme sürümü vardır. Değişiklikten önceki oturum, değişiklik geri alınsa bile kalıcı olarak
   reddedilir (yetkisi alınıp yeniden verilen yönetici yeniden giriş yapar). Kendi şifre değişikliği dahil her yazma
   işlemi sürümü, rolü ve hesabı kendi komutu veya transaction'ı içinde denetler. "Şifre Değiştir", hesabın diğer
   oturumlarını (örneğin çalınan şifreyle başka bir yerde açılmış olanı) kapatır; şifreyi değiştiren pencere çalışmaya
@@ -322,8 +329,9 @@ Tasarım zamanı fabrikası `ARAC_CONNECTION` değişkenini okur, yoksa yerel SQ
 Migration'ları veritabanı sahibinin bağlantısıyla uygulayın; uygulamanın kısıtlı oturumunun DDL yetkisi yoktur.
 
 İlk migration'dan sonrakiler `AddSessionVersion` (hesapların oturum sürümü, `OturumSurumu`), `AddMaintenanceLog`
-(bakım ve hasar kayıtlarının `AracBakim` tablosu) ve `AddCarVersion`'dır (araçların sürümü, `Surum`; eski bir formdan
-gelen değişikliği reddeder). Bunları uyguladıktan sonra uygulamanın oturumunun yeni tabloyu kullanabilmesi için
+(bakım ve hasar kayıtlarının `AracBakim` tablosu), `AddCarVersion` (araçların sürümü, `Surum`; eski bir formdan gelen
+değişikliği reddeder) ve `AddAccountEditVersion`'dır (hesapların düzenleme sürümü, `DuzenlemeSurumu`; eski bir formdan
+gelen hesap değişikliğini reddeder). Bunları uyguladıktan sonra uygulamanın oturumunun yeni tabloyu kullanabilmesi için
 `docs/grant-app-login.sql` betiğini yeniden çalıştırın; yeni sütunlar mevcut tablo yetkileriyle kapsanır.
 
 **Eski uygulamanın veritabanını yükseltme:** `dotnet ef database update` bu veritabanını **yükseltmez**. Böyle bir
@@ -400,8 +408,10 @@ Tehdit modeli için [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) dosyasına bak�
 
 - Şifreler PBKDF2 ile özetlenir; saklanan biçim kendi sütununda tutulur, böylece bir değer hiçbir zaman başka bir
   biçimde okunmaz.
-- Kilit sayaçları atomik olarak güncellenir ve başarılı giriş yalnızca hesap hâlâ kilitsiz ve değişmemişken yazılır;
-  eşzamanlı denemeler yeni bir kilidi kaldıramaz.
+- Hatalı giriş, yalnızca hesap veritabanının saatine göre kilitsizken ve denetlenen şifre ile oturum sürümü hâlâ
+  geçerliyken eşleşen tek bir koşullu `UPDATE` ile sayılır; kilidin bitişi de bu saatle hesaplanır. Başarılı giriş
+  yalnızca hesap hâlâ kilitsiz ve değişmemişken yazılır; eşzamanlı denemeler ne yeni bir kilidi kaldırabilir ne de
+  kilitli ya da sıfırlanmış bir hesaba sayılabilir.
 - Kiralamalar araç başına bir uygulama kilidi (`sp_getapplock`) alır ve ortak günleri aynı işlem içinde denetler;
   filtreli benzersiz bir dizin bunu destekler. Veritabanı komut zaman aşımı (90 saniye) her kilit beklemesinden
   uzundur; meşgul bir araç zaman aşımı yerine "İşlem meşgul" mesajıyla sonuçlanır.
