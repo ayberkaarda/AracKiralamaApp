@@ -20,43 +20,29 @@ Bu proje, C# (Windows Forms) ve SQL Server kullanılarak geliştirilmiş basit b
 
 ## 🔧 Veritabanı Bağlantısı
 
-Uygulamada SQL Server bağlantısı hem `App.config` dosyasında hem de `ConnectionManager.cs` gibi sınıflarda tanımlıdır. Bu alanlarda **kendi bilgisayarınıza uygun sunucu adı (Server Name)** ve gerekli durumlarda **kullanıcı adı/parola** gibi bilgileri girmeniz gerekir.
+Bağlantı dizesi koda yazılmaz. Uygulama onu sırasıyla `appsettings.json` (sürüm kontrolüne girmez), kullanıcı gizli ayarları (user secrets) ve `ARAC_CONNECTION` ortam değişkeninden okur; sonraki kaynak öncekini geçersiz kılar.
 
-### Bağlantı dizesi örneği:
+```powershell
+# Seçenek 1: örnek ayar dosyasını kopyalayıp bağlantı dizesini düzenleyin
+Copy-Item src\AracKiralama.UI\appsettings.example.json src\AracKiralama.UI\appsettings.json
 
-```xml
-<!-- App.config içinde -->
-<connectionStrings>
-  <add name="AracKiralamaDB"
-       connectionString="Server=YOUR_SERVER_NAME;Database=AracKiralama;Trusted_Connection=True;" 
-       providerName="System.Data.SqlClient"/>
-</connectionStrings>
+# Seçenek 2: kullanıcı gizli ayarları
+dotnet user-secrets set "ConnectionStrings:AracKiralama" "Server=YOUR_SERVER_NAME;Database=AracKiralama;Trusted_Connection=True;TrustServerCertificate=True;" --project src\AracKiralama.UI
+
+# Seçenek 3: ortam değişkeni
+$env:ARAC_CONNECTION = "Server=YOUR_SERVER_NAME;Database=AracKiralama;Trusted_Connection=True;TrustServerCertificate=True;"
 ```
 
-```csharp
-// ConnectionManager.cs içinde örnek kullanım
-string connectionString = "Server=YOUR_SERVER_NAME;Database=AracKiralama;Trusted_Connection=True;";
-```
-
-> ❗ `YOUR_SERVER_NAME` kısmını kendi SQL Server örneğinizin adıyla değiştirin. Örneğin: `DESKTOP-1234\SQLEXPRESS` veya `localhost`.  
-> Eğer Windows kimlik doğrulaması yerine SQL kimlik doğrulaması kullanıyorsanız bağlantı dizesi şu şekilde olabilir:  
-> `Server=YOUR_SERVER_NAME;Database=AracKiralama;User Id=sqlusername;Password=sqlpassword;`
+> ❗ `YOUR_SERVER_NAME` kısmını kendi SQL Server örneğinizin adıyla değiştirin (örneğin `localhost\SQLEXPRESS`).
 
 ## 📌 Kurulum
 
-1. Bu projeyi GitHub üzerinden kendi bilgisayarınıza klonlayın:
-    ```bash
-    git clone https://github.com/kullaniciadi/arac-kiralama-projesi.git
-    ```
-
-2. Visual Studio ile projeyi açın.
-
-3. SQL Server'da `AracKiralama` adlı veritabanını oluşturun ve proje içinde bulunan `AracKiralama.sql` dosyasındaki script'i çalıştırarak tabloları oluşturun.
-
-4. `App.config` ve `ConnectionManager.cs` dosyalarında yer alan **SQL Server bağlantı dizesini**, kendi bilgisayarınıza uygun şekilde güncelleyin.
-
-5. Projeyi derleyin (`Ctrl+Shift+B`) ve uygulamayı çalıştırarak test edin.
-
+1. Projeyi klonlayın ve [.NET 10 SDK](https://dotnet.microsoft.com/download) kurulu olduğundan emin olun.
+2. Bağlantı dizesini yukarıdaki yollardan biriyle verin.
+3. Derleyip çalıştırın: `dotnet run --project src\AracKiralama.UI`. Veritabanı ilk açılışta EF Core migration'larıyla oluşturulur; eski uygulamanın veritabanı verileri korunarak yerinde yükseltilir. Migration'ları elle uygulamak için: `dotnet tool restore` ve `dotnet ef database update --project src\AracKiralama.Data`.
+4. Varsayılan ya da belgelenmiş şifreli bir hesap yoktur. Boş bir veritabanında ilk açılışta yönetici hesabını kendi belirlediğiniz şifreyle oluşturursunuz. Hesapları olup yöneticisi olmayan bir veritabanında ilk yönetici, veritabanı sahibinin `docs\issue-setup-key.sql` betiğiyle ürettiği kurulum anahtarıyla oluşturulur. Uygulamanın kendi SQL oturumu için örnek yetkiler `docs\grant-app-login.sql` dosyasındadır.
+5. Deneme verisi (yalnızca hayali araçlar, hesap yok) yalnızca istenirse ve yalnızca boş veritabanına eklenir: `ARAC_DEMO=1` ya da `"Seed": { "Demo": true }`.
+6. Testler: `dotnet test -c Release`. SQL Server testleri varsayılan olarak `localhost\SQLEXPRESS` kullanır (`ARAC_TEST_SQLSERVER` ile değiştirilebilir); `ARAC_SKIP_SQL_TESTS=1` bu testleri atlar.
 ## 📸 Ekran Görüntüleri
 
 ### Giriş Ekranı  
