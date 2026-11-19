@@ -97,7 +97,7 @@ measures only; it is not a legal assessment.
 | Threat | Mitigation | Status |
 |---|---|---|
 | Server-side request forgery from every customer's computer: a picture address pointing to localhost, the local network or a cloud metadata address | Picture addresses must be absolute http or https addresses of at most 255 characters when an admin saves them. When a picture is shown, the address must carry no user information and every address the host name resolves to must be public (no loopback, private, link-local, shared, multicast, broadcast or reserved address, also not inside an IPv6 transition address), and the connection goes to the address that was checked. Redirects are not followed | Mitigated |
-| Local files or network shares opened through a picture address | Only http and https are fetched; anything else shows the application's own placeholder without opening it | Mitigated |
+| Local files or network shares opened through a picture address | Only http and https are fetched; anything else shows the application's own drawing of the car without opening it | Mitigated |
 | Large or malicious images | At most 2 MB of an image content type, at most 4096 pixels per side, within 10 seconds, at most 3 downloads at once; no proxy, cookies or credentials are sent | Mitigated |
 | A picture host learning which customers look at which car | Pictures are fetched by the customer's computer, so the host sees its address and the time | Accepted |
 
