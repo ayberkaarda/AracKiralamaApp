@@ -19,6 +19,9 @@ namespace AracKiralama.UI
         private readonly ExclusiveOperation _write = new();
         private readonly RequestSequence _loads = new();
 
+        /// <summary>The phone field's text right after an account was picked, and the stored phone.</summary>
+        private (string Shown, string? Stored)? _shownPhone;
+
         public UserManagementPanel(IAccountService accounts, UserSession session)
         {
             ArgumentNullException.ThrowIfNull(accounts);
@@ -80,6 +83,10 @@ namespace AracKiralama.UI
             txtEmail.Text = user.Email ?? string.Empty;
             txtPhone.Text = user.Phone ?? string.Empty;
             cmbRole.SelectedItem = RoleChoice.All.First(r => r.Role == user.Role);
+
+            // The phone field keeps digits only, so a phone of the original data in another shape shows
+            // changed; left as shown, the stored value is sent.
+            _shownPhone = (txtPhone.Text, user.Phone);
         }
 
         internal Task<bool> AddAsync() =>
@@ -158,12 +165,13 @@ namespace AracKiralama.UI
             txtUserName.Text,
             txtPassword.Text,
             txtEmail.Text,
-            txtPhone.Text,
+            SelectedUserId is not null && _shownPhone is ({ } shown, { } stored) && txtPhone.Text == shown ? stored : txtPhone.Text,
             (cmbRole.SelectedItem as RoleChoice)?.Role ?? (UserRole)(-1));
 
         private void ClearForm()
         {
             SelectedUserId = null;
+            _shownPhone = null;
             dataGridView1.ClearSelection();
             txtId.Clear();
             txtUserName.Clear();

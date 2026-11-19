@@ -70,6 +70,59 @@ public sealed class ListingTests
         Assert.True(Find<Button>(form, "btnUpdateCar").Enabled);
     });
 
+    /// <summary>
+    /// A car of the original data whose gearbox or fuel type is in neither list shows that value and is
+    /// saved with it unchanged; the next car shows the lists alone again.
+    /// </summary>
+    [Fact]
+    public void AdminCars_LegacyTransmission_StaysEditable() => Run(() =>
+    {
+        var cars = new ControlledCarService();
+        var legacy = ControlledCarService.Car(7, "Eski", "Araba");
+        legacy.Transmission = "Manual";
+        legacy.FuelType = "Benzinli";
+        using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        var transmission = Find<ComboBox>(form, "cmbTransmission");
+
+        form.SelectCar(legacy);
+        Find<CheckBox>(form, "chkListed").Checked = false;
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.Equal("Manual", transmission.SelectedItem);
+        Assert.Equal("Manual", cars.LastUpdate!.Transmission);
+        Assert.Equal("Benzinli", cars.LastUpdate.FuelType);
+        Assert.False(cars.LastUpdate.IsListed);
+
+        form.SelectCar(cars.Cars[0]);
+        Assert.DoesNotContain("Manual", transmission.Items.Cast<string>());
+        Assert.DoesNotContain("Benzinli", Find<ComboBox>(form, "cmbFuelType").Items.Cast<string>());
+        Assert.Equal("Otomatik", transmission.SelectedItem);
+    });
+
+    /// <summary>
+    /// The phone field shows digits only, so a phone of the original data in another shape is shown
+    /// changed. Left as shown, the stored value is sent unchanged; typed over, the typed one is sent.
+    /// </summary>
+    [Fact]
+    public void AccountPanel_LegacyPhoneLeftAsShown_IsSentAsStored() => Run(() =>
+    {
+        var accounts = new FakeAccounts();
+        using var form = new UserManagementPanel(accounts, Sessions.Admin) { Prompts = new RecordingPrompts() };
+        var legacy = new UserSummary(6, "eski", "eski@@ornek", "(555)1234567", UserRole.User);
+
+        form.SelectUser(legacy);
+        Find<TextBox>(form, "txtPassword").Text = "Yeni.Sifre12";
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.Equal("(555)1234567", accounts.LastUpdate!.Phone);
+        Assert.Equal("eski@@ornek", accounts.LastUpdate.Email);
+
+        form.SelectUser(legacy);
+        Find<TextBox>(form, "txtPhone").Text = "5559876543";
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+        Assert.Equal("555 987 6543", accounts.LastUpdate.Phone);
+    });
+
     [Fact]
     public void AdminCars_FirstAddWithASelection_OnlyClearsTheForm() => Run(() =>
     {
@@ -155,7 +208,13 @@ public sealed class ListingTests
 
         public Task<int> AddAsync(Business.Services.UserSession session, Business.Services.AccountInput input, CancellationToken cancellationToken = default) => Task.FromResult(1);
 
-        public Task UpdateAsync(Business.Services.UserSession session, int userId, Business.Services.AccountInput input, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Business.Services.AccountInput? LastUpdate { get; private set; }
+
+        public Task UpdateAsync(Business.Services.UserSession session, int userId, Business.Services.AccountInput input, CancellationToken cancellationToken = default)
+        {
+            LastUpdate = input;
+            return Task.CompletedTask;
+        }
 
         public Task DeleteAsync(Business.Services.UserSession session, int userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }

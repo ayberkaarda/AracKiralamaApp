@@ -105,8 +105,8 @@ namespace AracKiralama.UI
             txtBrand.Text = car.Brand;
             txtModel.Text = car.Model;
             cmbYear.Text = car.Year.ToString(CultureInfo.InvariantCulture);
-            cmbTransmission.SelectedItem = InputRules.Transmissions.FirstOrDefault(t => t == car.Transmission);
-            cmbFuelType.SelectedItem = InputRules.FuelTypes.FirstOrDefault(f => f == car.FuelType);
+            ShowChoice(cmbTransmission, InputRules.Transmissions, car.Transmission);
+            ShowChoice(cmbFuelType, InputRules.FuelTypes, car.FuelType);
             txtMileage.Text = car.Mileage.ToString(CultureInfo.InvariantCulture);
             txtColor.Text = car.Color;
             txtPlate.Text = car.Plate;
@@ -250,6 +250,22 @@ namespace AracKiralama.UI
             _ => null,
         };
 
+        /// <summary>
+        /// Lists the allowed values and selects <paramref name="value"/>. A value of the original data that
+        /// is in neither list is listed too, so the car can be saved without changing it; it disappears
+        /// with the next car.
+        /// </summary>
+        private static void ShowChoice(ComboBox box, IReadOnlyList<string> allowed, string? value)
+        {
+            IReadOnlyList<string> items = value is null || allowed.Contains(value, StringComparer.Ordinal) ? allowed : [.. allowed, value];
+            if (!box.Items.Cast<string>().SequenceEqual(items, StringComparer.Ordinal))
+            {
+                box.ReplaceItems(items);
+            }
+
+            box.SelectedItem = value;
+        }
+
         private void ClearForm()
         {
             SelectedCarId = null;
@@ -262,8 +278,8 @@ namespace AracKiralama.UI
 
             cmbYear.SelectedIndex = -1;
             cmbYear.Text = string.Empty;
-            cmbTransmission.SelectedIndex = -1;
-            cmbFuelType.SelectedIndex = -1;
+            ShowChoice(cmbTransmission, InputRules.Transmissions, null);
+            ShowChoice(cmbFuelType, InputRules.FuelTypes, null);
             chkListed.Checked = true;
             picCar.ShowCarPicture(null);
             btnUpdateCar.Enabled = false;
