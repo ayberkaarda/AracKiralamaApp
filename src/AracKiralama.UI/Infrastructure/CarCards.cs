@@ -7,8 +7,8 @@ namespace AracKiralama.UI.Infrastructure;
 /// <summary>The cards of the customer's car list.</summary>
 internal static class CarCards
 {
-    /// <summary>Height of the drawn car on a card, in logical pixels.</summary>
-    private const int PictureHeight = 128;
+    /// <summary>Height of the car's picture on a card, in logical pixels (about 1.9 : 1 like the bundled photographs).</summary>
+    private const int PictureHeight = 150;
 
     /// <summary>
     /// A card with the car's drawing (or picture), its name with the plate, the year, gearbox, fuel and color,
@@ -22,7 +22,7 @@ internal static class CarCards
         var id = car.Id.ToString(CultureInfo.InvariantCulture);
         var p = Theme.Current;
         var picture = new VehiclePicture { Name = "picCar" + id, Height = PictureHeight, Margin = new Padding(0, 0, 0, Spacing.M) };
-        picture.ShowCar(car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
+        picture.ShowCar(car.Brand, car.Model, car.Color, car.ImageUrl, car.Brand + " " + car.Model);
 
         // A plain auto-sized label: the table measures its wrapped height itself, so a long name grows the row.
         var title = new Label

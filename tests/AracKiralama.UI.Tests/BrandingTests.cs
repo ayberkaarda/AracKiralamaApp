@@ -68,7 +68,7 @@ public sealed class BrandingTests
             {
                 Theme.Use(palette);
                 using var picture = new VehiclePicture { Size = new Size(240, 120) };
-                picture.ShowCar("Kent", "Kırmızı", "http://localhost/arac.png", "Anka Kent");
+                picture.ShowCar("Anka", "Kent", "Kırmızı", "http://localhost/arac.png", "Anka Kent");
                 using var image = new Bitmap(240, 120);
                 picture.DrawToBitmap(image, new Rectangle(0, 0, 240, 120));
 

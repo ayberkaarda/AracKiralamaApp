@@ -15,7 +15,7 @@ internal enum VehicleShape
 
 /// <summary>
 /// The application's own vehicle illustration, drawn with GDI+ from a few shapes: a side view of a generic car
-/// in the car's color, so every car has a picture without any photograph, brand or real model. The body style
+/// in the car's color, for every car without a bundled photograph or a picture of its own. The body style
 /// follows the model's name (the same model always gets the same style), the paint follows the color field.
 /// Under high contrast the car is an outline in the window text color.
 /// </summary>
@@ -271,14 +271,19 @@ internal static class VehicleArt
 }
 
 /// <summary>
-/// The picture of a car: a downloaded picture when the car has one that passed every check, otherwise the
-/// application's own <see cref="VehicleArt"/> on a quiet tile with a road line. The picture stays a normal
-/// <see cref="PictureBox"/>, so <see cref="Infrastructure.CarPictures"/> loads into it as before.
+/// The picture of a car: a downloaded picture when the car has one that passed every check; otherwise the
+/// bundled photograph of its make and model (<see cref="Infrastructure.CarPhotos"/>), filling the rounded tile;
+/// otherwise the application's own <see cref="VehicleArt"/> on a quiet tile with a road line. The picture stays a
+/// normal <see cref="PictureBox"/>, so <see cref="Infrastructure.CarPictures"/> loads into it as before.
 /// </summary>
 internal sealed class VehiclePicture : PictureBox, IThemeAware
 {
     private VehicleShape _shape;
     private Color _paint = VehicleArt.PaintFor(null);
+    private Image? _photo;
+
+    /// <summary>The bundled photograph scaled to the tile once, so a repaint only fills the rounded shape with it.</summary>
+    private Bitmap? _scaled;
 
     public VehiclePicture()
     {
@@ -312,17 +317,46 @@ internal sealed class VehiclePicture : PictureBox, IThemeAware
         }
     }
 
-    /// <summary>Draws a car of <paramref name="model"/> in <paramref name="color"/> and loads its picture, if it has an acceptable one.</summary>
-    public void ShowCar(string? model, string? color, string? imageUrl, string description)
+    /// <summary>Whether the bundled photograph of the car's make and model is shown (when no own picture is loaded).</summary>
+    public bool HasPhoto => _photo is not null;
+
+    /// <summary>
+    /// Shows the bundled photograph of <paramref name="brand"/> <paramref name="model"/>, or else draws a car of the
+    /// model in <paramref name="color"/>, and loads the car's own picture, if it has an acceptable one.
+    /// </summary>
+    public void ShowCar(string? brand, string? model, string? color, string? imageUrl, string description)
     {
         _shape = VehicleArt.ShapeFor(model);
         _paint = VehicleArt.PaintFor(color);
+        SetPhoto(Infrastructure.CarPhotos.Find(brand, model));
         AccessibleName = description;
         Infrastructure.CarPictures.Show(this, imageUrl);
         Invalidate();
     }
 
     void IThemeAware.ApplyTheme(ThemeRemap remap) => Invalidate();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            SetPhoto(null);
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void SetPhoto(Image? photo)
+    {
+        if (!ReferenceEquals(photo, _photo))
+        {
+            _scaled?.Dispose();
+            _scaled = null;
+        }
+
+        // The photograph itself is shared by every screen and never disposed here.
+        _photo = photo;
+    }
 
     protected override void OnPaintBackground(PaintEventArgs pevent)
     {
@@ -346,6 +380,12 @@ internal sealed class VehiclePicture : PictureBox, IThemeAware
 
         var p = Theme.Current;
         var g = pe.Graphics;
+        if (_photo is not null)
+        {
+            DrawPhoto(g, _photo, p);
+            return;
+        }
+
         var pad = Theme.PxF(this, Spacing.M);
         var area = new RectangleF(pad, pad, Width - (2 * pad), Height - (2 * pad));
         if (!p.IsHighContrast)
@@ -357,5 +397,69 @@ internal sealed class VehiclePicture : PictureBox, IThemeAware
         }
 
         VehicleArt.Draw(g, area, _shape, _paint, p.IsHighContrast ? p.Surface : p.SurfaceAlt);
+    }
+
+    /// <summary>
+    /// Fills the tile with the photograph, scaled to cover it and centered (the bundled photographs keep the car in
+    /// the middle with room around it), with the tile's rounded corners and a hairline border.
+    /// </summary>
+    private void DrawPhoto(Graphics g, Image photo, ThemePalette p)
+    {
+        var size = ClientSize;
+        if (size.Width < 2 || size.Height < 2)
+        {
+            return;
+        }
+
+        if (_scaled is null || _scaled.Size != size)
+        {
+            _scaled?.Dispose();
+            _scaled = Cover(photo, size);
+        }
+
+        var state = g.Save();
+        try
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            var tile = new RectangleF(0, 0, size.Width, size.Height);
+            var radius = Theme.PxF(this, Radius.Card);
+            using (var brush = new TextureBrush(_scaled, WrapMode.Clamp))
+            using (var shape = Painting.RoundedRect(tile, radius))
+            {
+                g.FillPath(brush, shape);
+            }
+
+            // A hairline keeps a light photograph apart from a light card (and is the tile's border under high contrast).
+            Painting.FillRounded(g, tile, radius, Color.Transparent, p.Border);
+        }
+        finally
+        {
+            g.Restore(state);
+        }
+    }
+
+    /// <summary>The photograph scaled with high quality so that it covers <paramref name="size"/>, cut to it around the center.</summary>
+    private static Bitmap Cover(Image photo, Size size)
+    {
+        var scale = Math.Max((float)size.Width / photo.Width, (float)size.Height / photo.Height);
+        var width = photo.Width * scale;
+        var height = photo.Height * scale;
+        var bitmap = new Bitmap(size.Width, size.Height);
+        using var g = Graphics.FromImage(bitmap);
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        g.CompositingQuality = CompositingQuality.HighQuality;
+
+        // Mirrored edges keep the bicubic filter from blending the border with transparent pixels.
+        using var attributes = new System.Drawing.Imaging.ImageAttributes();
+        attributes.SetWrapMode(WrapMode.TileFlipXY);
+        var target = new Rectangle(
+            (int)Math.Floor((size.Width - width) / 2F),
+            (int)Math.Floor((size.Height - height) / 2F),
+            (int)Math.Ceiling(width),
+            (int)Math.Ceiling(height));
+        g.DrawImage(photo, target, 0, 0, photo.Width, photo.Height, GraphicsUnit.Pixel, attributes);
+        return bitmap;
     }
 }

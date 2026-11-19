@@ -28,8 +28,8 @@ internal static class RentalCards
 
         var id = rental.Id.ToString(CultureInfo.InvariantCulture);
         var p = Theme.Current;
-        var picture = new VehiclePicture { Name = "picRental" + id, Size = new Size(124, 76), Margin = new Padding(0, 0, Spacing.M, 0), Anchor = AnchorStyles.Left | AnchorStyles.Top };
-        picture.ShowCar(rental.Model, null, rental.ImageUrl, rental.Brand + " " + rental.Model);
+        var picture = new VehiclePicture { Name = "picRental" + id, Size = new Size(144, 76), Margin = new Padding(0, 0, Spacing.M, 0), Anchor = AnchorStyles.Left | AnchorStyles.Top };
+        picture.ShowCar(rental.Brand, rental.Model, null, rental.ImageUrl, rental.Brand + " " + rental.Model);
 
         var title = new Label
         {

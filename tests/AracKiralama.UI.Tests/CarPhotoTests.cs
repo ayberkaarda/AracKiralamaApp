@@ -1,8 +1,13 @@
 using AracKiralama.UI.Infrastructure;
+using AracKiralama.UI.Theming;
+using static AracKiralama.UI.Tests.Support.StaThread;
 
 namespace AracKiralama.UI.Tests;
 
-/// <summary>The bundled car photographs: each one is credited in docs/CREDITS.md, small and matched by make and model.</summary>
+/// <summary>
+/// The bundled car photographs: each one is credited in docs/CREDITS.md, small, matched by make and model, and
+/// shown in every palette; any other car keeps the application's own drawing.
+/// </summary>
 public sealed class CarPhotoTests
 {
     /// <summary>Largest bundled photograph file.</summary>
@@ -77,6 +82,53 @@ public sealed class CarPhotoTests
         Assert.Equal("transit custom", CarPhotos.Normalize("Transit   Custom"));
         Assert.Equal("isik", CarPhotos.Normalize("IŞIK"));
         Assert.Equal(string.Empty, CarPhotos.Normalize(null));
+    }
+
+    /// <summary>
+    /// A car with a bundled photograph shows it in every palette, also under high contrast; a car of another
+    /// model keeps the drawing.
+    /// </summary>
+    [Fact]
+    public void VehiclePicture_ShowsTheBundledPhotoForAKnownModel() => Run(() =>
+    {
+        var previous = Theme.Current;
+        try
+        {
+            foreach (var palette in new[] { ThemePalette.Light, ThemePalette.Dark, ThemePalette.HighContrast() })
+            {
+                Theme.Use(palette);
+                using var known = new VehiclePicture { Size = new Size(240, 120) };
+                using var unknown = new VehiclePicture { Size = new Size(240, 120) };
+                known.ShowCar("Renault", "Clio", "Beyaz", null, "Renault Clio");
+                unknown.ShowCar("Anka", "Kent", "Beyaz", null, "Anka Kent");
+                using var image = new Bitmap(240, 120);
+                known.DrawToBitmap(image, new Rectangle(0, 0, 240, 120));
+
+                Assert.True(known.HasPhoto, $"The {palette.Name} picture has no photograph.");
+                Assert.False(unknown.HasPhoto);
+                Assert.Null(known.Image);
+                Assert.True(Colors(image) > 200, $"The {palette.Name} photograph was not drawn.");
+                Assert.Equal("Renault Clio", known.AccessibleName);
+            }
+        }
+        finally
+        {
+            Theme.Use(previous);
+        }
+    });
+
+    private static int Colors(Bitmap image)
+    {
+        var seen = new HashSet<int>();
+        for (var y = 0; y < image.Height; y += 2)
+        {
+            for (var x = 0; x < image.Width; x += 2)
+            {
+                seen.Add(image.GetPixel(x, y).ToArgb());
+            }
+        }
+
+        return seen.Count;
     }
 
     private static string RepositoryRoot()
