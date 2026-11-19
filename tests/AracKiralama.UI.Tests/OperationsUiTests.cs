@@ -121,12 +121,39 @@ public sealed class OperationsUiTests
         var save = form.SaveAsync();
         maintenance.Records[0] = ControlledMaintenanceService.Record(4, 3);
         maintenance.Records[0].Description = "Başka yönetici";
-        maintenance.Refuse("Bakım kaydı siz düzenlerken başka biri tarafından değiştirildi.");
+        maintenance.RefuseAsStale("Bakım kaydı siz düzenlerken başka biri tarafından değiştirildi.");
 
         Assert.True(save.Result);
         Assert.Equal(3, form.Selected!.Version);
         Assert.Equal("Başka yönetici", Find<TextBox>(form, "txtDescription").Text);
         Assert.Contains(NoDialogs.Requested, r => r.Contains("başka biri tarafından değiştirildi", StringComparison.Ordinal));
+    });
+
+    /// <summary>A refusal of the input (a typo, days a rental holds) keeps everything the admin typed, for a new and a selected record.</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Maintenance_RefusedInput_KeepsWhatWasTyped(bool selected) => Run(() =>
+    {
+        var maintenance = new ControlledMaintenanceService();
+        using var form = new MaintenanceForm(maintenance, Sessions.Admin, 1, "Anka Kent") { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadRecordsAsync().IsCompletedSuccessfully);
+        if (selected)
+        {
+            form.SelectRecord(form.ShownRecords[0]);
+        }
+
+        Find<TextBox>(form, "txtDescription").Text = "Yazılan açıklama";
+        Find<TextBox>(form, "txtCost").Text = "99,5";
+        var save = form.SaveAsync();
+        maintenance.Records[0] = ControlledMaintenanceService.Record(4, 1);
+        maintenance.Refuse("Araç seçtiğiniz tarihlerin bir kısmında kiralanmış.");
+
+        Assert.True(save.Result);
+        Assert.Equal("Yazılan açıklama", Find<TextBox>(form, "txtDescription").Text);
+        Assert.Equal("99,5", Find<TextBox>(form, "txtCost").Text);
+        Assert.Equal(selected ? 4 : null, form.Selected?.Id);
+        Assert.True(Find<Button>(form, "btnSave").Enabled);
     });
 
     [Fact]

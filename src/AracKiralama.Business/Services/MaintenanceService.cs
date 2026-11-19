@@ -107,12 +107,15 @@ internal sealed class MaintenanceService(
         }
 
         audit.Record(AuditEvent.MaintenanceRefused, AuditRole.Admin);
-        throw new BusinessRuleException(outcome switch
+
+        // A record changed or cancelled meanwhile makes the form stale: it has to load the record again.
+        // Any other refusal keeps what the admin typed.
+        throw outcome switch
         {
-            MaintenanceOutcome.CarNotFound => CarNotFound,
-            MaintenanceOutcome.ChangedElsewhere => ChangedElsewhere,
-            MaintenanceOutcome.OverlapsRental => OverlapsRental,
-            _ => NotFound,
-        });
+            MaintenanceOutcome.CarNotFound => new BusinessRuleException(CarNotFound),
+            MaintenanceOutcome.OverlapsRental => new BusinessRuleException(OverlapsRental),
+            MaintenanceOutcome.ChangedElsewhere => BusinessRuleException.Stale(ChangedElsewhere),
+            _ => BusinessRuleException.Stale(NotFound),
+        };
     }
 }

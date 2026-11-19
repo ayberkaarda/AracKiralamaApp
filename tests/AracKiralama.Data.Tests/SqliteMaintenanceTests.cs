@@ -127,6 +127,7 @@ public sealed class SqliteMaintenanceTests : IAsyncLifetime
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Maintenance.UpdateAsync(_admin, id, 1, Input(9, 3, "İkinci yönetici"), Ct));
         Assert.Equal(MaintenanceService.ChangedElsewhere, error.Message);
+        Assert.True(error.IsStale);
         var cancel = await Assert.ThrowsAsync<BusinessRuleException>(() => Maintenance.CancelAsync(_admin, id, 1, Ct));
         Assert.Equal(MaintenanceService.ChangedElsewhere, cancel.Message);
 
@@ -143,6 +144,7 @@ public sealed class SqliteMaintenanceTests : IAsyncLifetime
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Maintenance.UpdateAsync(_admin, id, 1, Input(3, 2), Ct));
 
         Assert.Equal(MaintenanceService.OverlapsRental, error.Message);
+        Assert.False(error.IsStale);
         Assert.Equal(Today.AddDays(10), Assert.Single(await Maintenance.GetForCarAsync(_admin, CarId, Ct)).StartDate);
     }
 
@@ -158,6 +160,7 @@ public sealed class SqliteMaintenanceTests : IAsyncLifetime
         Assert.Equal((MaintenanceStatus.Cancelled, 2), (record.Status, record.Version));
         var again = await Assert.ThrowsAsync<BusinessRuleException>(() => Maintenance.CancelAsync(_admin, id, 2, Ct));
         Assert.Equal(MaintenanceService.NotFound, again.Message);
+        Assert.True(again.IsStale);
         var change = await Assert.ThrowsAsync<BusinessRuleException>(() => Maintenance.UpdateAsync(_admin, id, 2, Input(20, 1), Ct));
         Assert.Equal(MaintenanceService.NotFound, change.Message);
     }

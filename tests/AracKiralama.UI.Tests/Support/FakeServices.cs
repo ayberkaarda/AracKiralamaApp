@@ -293,6 +293,9 @@ internal sealed class ControlledMaintenanceService : IMaintenanceService
 
     public void Refuse(string message) => _write.SetException(new BusinessRuleException(message));
 
+    /// <summary>Refuses the pending write because the record changed elsewhere.</summary>
+    public void RefuseAsStale(string message) => _write.SetException(BusinessRuleException.Stale(message));
+
     private Task Pending()
     {
         Writes++;

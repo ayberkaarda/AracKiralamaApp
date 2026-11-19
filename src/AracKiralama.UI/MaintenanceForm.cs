@@ -11,7 +11,8 @@ namespace AracKiralama.UI
     /// <summary>
     /// The maintenance and damage log of one car (admin only): the records, and a form to add a record,
     /// change the selected one or cancel it. A change carries the version the form loaded; when another
-    /// admin changed the record meanwhile nothing is written and the record is loaded again.
+    /// admin changed the record meanwhile nothing is written and the record is loaded again. Any other
+    /// refusal leaves the entered values in the form.
     /// </summary>
     public sealed class MaintenanceForm : Form
     {
@@ -187,9 +188,10 @@ namespace AracKiralama.UI
                     {
                         await write();
                     }
-                    catch (BusinessRuleException)
+                    catch (BusinessRuleException ex) when (ex.IsStale)
                     {
-                        // Changed, cancelled or blocked meanwhile: show the records as they are now.
+                        // Changed or cancelled meanwhile: show the records as they are now. Any other
+                        // refusal (a typo, days a rental holds) keeps what the admin typed.
                         await ReloadAndSelectAsync(Selected?.Id);
                         throw;
                     }
