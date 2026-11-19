@@ -362,20 +362,22 @@ public sealed class OperationsUiTests
         }
     });
 
-    /// <summary>The operation buttons below the car's picture size themselves from the font and stay inside the panel.</summary>
+    /// <summary>The operation buttons size themselves from their font: the calendar and the maintenance log sit under the car's fields, the report in the footer.</summary>
     [Fact]
     public void AdminPanel_OperationButtonsFitTheirText() => Run(() =>
     {
         using var form = new AdminPanel(new ControlledCarService(), new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
-        var panel = Find<FlowLayoutPanel>(form, "pnlOperations");
+        var panel = Find<Control>(form, "pnlOperations");
 
         foreach (var name in OperationButtons)
         {
             var button = Find<Button>(form, name);
             Assert.True(button.AutoSize);
             Assert.True(TextRenderer.MeasureText(button.Text, button.Font).Width < button.PreferredSize.Width);
-            Assert.Same(panel, button.Parent);
         }
+
+        Assert.Same(panel, Find<Button>(form, "btnCalendar").Parent);
+        Assert.Same(panel, Find<Button>(form, "btnMaintenance").Parent);
     });
 
     private static void CreateHandles(Control control)

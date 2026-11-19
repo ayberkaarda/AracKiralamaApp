@@ -75,23 +75,30 @@ public sealed class ListingTests
     {
         var cars = new ControlledCarService();
         using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
-        var grid = Find<DataGridView>(form, "dataGridView1");
-        _ = grid.Handle;
+        var list = Find<ListBox>(form, "lstCars");
+        _ = list.Handle;
 
         Assert.True(form.LoadCarsAsync().IsCompletedSuccessfully);
 
-        Assert.Equal(2, grid.Rows.Count);
-        Assert.Empty(grid.SelectedRows);
+        Assert.Equal(2, list.Items.Count);
+        Assert.Equal(-1, list.SelectedIndex);
         Assert.Null(form.SelectedCarId);
         Assert.False(Find<Button>(form, "btnUpdateCar").Enabled);
         Assert.Empty(Find<TextBox>(form, "txtBrand").Text);
 
         // A click on a row is a choice; it fills the form.
-        form.SelectCar(cars.Cars[1]);
+        list.SelectedIndex = 1;
+        Assert.Equal(2, form.SelectedCarId);
         Assert.Equal("Kartal", Find<TextBox>(form, "txtBrand").Text);
         Assert.Equal("850,5", Find<TextBox>(form, "txtDailyPrice").Text);
         Assert.Equal("Otomatik", Find<ComboBox>(form, "cmbTransmission").SelectedItem);
         Assert.True(Find<Button>(form, "btnUpdateCar").Enabled);
+
+        // Loading again keeps the car in the form and selects its row without treating that as a choice.
+        Find<TextBox>(form, "txtColor").Text = "Yazılan renk";
+        Assert.True(form.LoadCarsAsync().IsCompletedSuccessfully);
+        Assert.Equal(1, list.SelectedIndex);
+        Assert.Equal("Yazılan renk", Find<TextBox>(form, "txtColor").Text);
     });
 
     /// <summary>
@@ -163,36 +170,31 @@ public sealed class ListingTests
         Assert.Single(prompts.Messages);
     });
 
+    /// <summary>A car's row: the name first, the plate and details below, and whether it is open for rental as a pill.</summary>
     [Fact]
-    public void CarRow_ShowsTheOriginalColumnNamesAndTheListing()
+    public void CarItem_ShowsTheNameThePlateAndTheListing()
     {
         var car = ControlledCarService.Car(1, "Anka", "Kent");
-        var headers = System.ComponentModel.TypeDescriptor.GetProperties(typeof(CarRow))
-            .Cast<System.ComponentModel.PropertyDescriptor>()
-            .Where(p => p.IsBrowsable)
-            .Select(p => p.DisplayName);
 
-        Assert.Equal(["AracID", "Marka", "Model", "Yil", "VitesTipi", "YakitTipi", "Km", "Renk", "Plaka", "GunlukUcret", "Durum", "Image"], headers);
-        Assert.Equal("Kiralamaya açık", CarRow.Describe(car));
+        var row = new CarItem(car).Row();
+
+        Assert.Equal("Anka Kent", row.Primary);
+        Assert.StartsWith(car.Plate + " · 2021 · Otomatik · Benzin · Beyaz · 850,50 TL / gün", row.Secondary, StringComparison.Ordinal);
+        Assert.Equal(("Kiralamaya açık", RowTone.Neutral), (row.Status, row.StatusTone));
         car.IsListed = false;
-        Assert.Equal("Kiralamaya kapalı", CarRow.Describe(car));
+        Assert.Equal(("Kiralamaya kapalı", RowTone.Warning), (new CarItem(car).Row().Status, new CarItem(car).Row().StatusTone));
     }
 
     [Fact]
-    public void UserRow_NeverShowsAPasswordAndMasksContactData()
+    public void AccountItem_NeverShowsAPasswordAndMasksContactData()
     {
-        var names = System.ComponentModel.TypeDescriptor.GetProperties(typeof(UserRow))
-            .Cast<System.ComponentModel.PropertyDescriptor>()
-            .Where(p => p.IsBrowsable)
-            .Select(p => p.DisplayName)
-            .ToList();
-        var row = new UserRow(new UserSummary(2, "ornek", "ornek@example.com", "5551234567", UserRole.User, 0));
+        var row = new AccountItem(new UserSummary(2, "ornek", "ornek@example.com", "5551234567", UserRole.User, 0)).Row();
 
-        Assert.Equal(["KullaniciID", "KullaniciAdi", "Eposta", "Telefon", "Rol"], names);
-        Assert.Equal("Müşteri", row.Role);
-        Assert.Equal("o***@example.com", row.Email);
-        Assert.Equal("555 *** ** 67", row.Phone);
-        Assert.Empty(new UserRow(new UserSummary(3, "eski", null, null, UserRole.User, 0)).Phone);
+        Assert.Equal("ornek", row.Primary);
+        Assert.Equal("o***@example.com · 555 *** ** 67", row.Secondary);
+        Assert.Equal("Müşteri", row.Status);
+        Assert.Equal("İletişim bilgisi yok", new AccountItem(new UserSummary(3, "eski", null, null, UserRole.User, 0)).Row().Secondary);
+        Assert.Equal(("Admin", RowTone.Accent), (new AccountItem(new UserSummary(1, "y", null, null, UserRole.Admin, 0)).Row().Status, RowTone.Accent));
     }
 
     [Fact]
@@ -248,7 +250,7 @@ public sealed class ListingTests
         Assert.Equal(1, form.Selected!.Version);
         Assert.Equal(UserRole.User, form.Selected.Role);
         Assert.Equal("Müşteri", Find<ComboBox>(form, "cmbRole").Text);
-        Assert.Contains(NoDialogs.Requested, r => r.Contains("başka biri tarafından değiştirildi", StringComparison.Ordinal));
+        Assert.Contains("başka biri tarafından değiştirildi", form.StatusBar.Text, StringComparison.Ordinal);
     });
 
     /// <summary>An admin who changes their own password or role is told why and the panel closes as signed out.</summary>
@@ -264,7 +266,9 @@ public sealed class ListingTests
         Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
 
         Assert.True(form.SessionEnded);
-        Assert.Equal([UserManagementPanel.OwnSessionEndedMessage], prompts.Messages);
+
+        // The window closes; the sign-in screen gives the reason, so nothing is shown here.
+        Assert.Empty(prompts.Messages);
     });
 
     [Fact]

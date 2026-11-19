@@ -45,7 +45,7 @@ public sealed class BrandingTests
         try
         {
             Assert.Equal(
-                ["Araç Kiralama - Giriş", "Araç Kiralama - Hesap oluştur", "Araç Kiralama - Şifre değiştir", "Araç Kiralama - Araçlar", "Araç Kiralama - Araç kirala", "Araç Kiralama - Kiralamalarım", "Yönetim Paneli", "Araç Kiralama - Kiralamalar"],
+                ["Araç Kiralama - Giriş", "Araç Kiralama - Hesap oluştur", "Araç Kiralama - Şifre değiştir", "Araç Kiralama - Araçlar", "Araç Kiralama - Araç kirala", "Araç Kiralama - Kiralamalarım", "Araç Kiralama - Yönetim paneli", "Araç Kiralama - Kiralamalar"],
                 all.Select(f => f.Text));
             Assert.All(all, f => Assert.NotNull(f.Icon));
         }

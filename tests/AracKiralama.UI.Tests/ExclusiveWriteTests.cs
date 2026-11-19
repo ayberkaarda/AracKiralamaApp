@@ -293,13 +293,18 @@ public sealed class ExclusiveWriteTests
                 new Dictionary<string, string> { [nameof(CarInput.Brand)] = "Marka boş bırakılamaz.", [nameof(CarInput.Plate)] = "Plaka boş bırakılamaz." }),
         };
         using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
-        var errors = (ErrorProvider)typeof(AdminPanel).GetField("errorProvider1", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(form)!;
 
         Assert.True(form.AddAsync().IsCompletedSuccessfully);
 
-        Assert.Equal("Marka boş bırakılamaz.", errors.GetError(Find<TextBox>(form, "txtBrand")));
-        Assert.Equal("Plaka boş bırakılamaz.", errors.GetError(Find<TextBox>(form, "txtPlate")));
-        Assert.Empty(errors.GetError(Find<TextBox>(form, "txtModel")));
-        Assert.Contains(NoDialogs.Requested, r => r.Contains("Lütfen gerekli alanları doldurun.", StringComparison.Ordinal));
+        Assert.Equal("Marka boş bırakılamaz.", form.FieldError(nameof(CarInput.Brand)));
+        Assert.Equal("Plaka boş bırakılamaz.", form.FieldError(nameof(CarInput.Plate)));
+        Assert.Equal("Plaka boş bırakılamaz.", Find<TextBox>(form, "txtPlate").AccessibleDescription);
+        Assert.Null(form.FieldError(nameof(CarInput.Model)));
+        Assert.Equal((StatusKind.Warning, "Lütfen gerekli alanları doldurun."), (form.StatusBar.Kind, form.StatusBar.Text));
+
+        // The next write starts with clean fields.
+        cars.AddFailure = null;
+        _ = form.AddAsync();
+        Assert.Null(form.FieldError(nameof(CarInput.Brand)));
     });
 }
