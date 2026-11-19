@@ -31,7 +31,7 @@ public sealed class CarServiceTests
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.GetAllAsync(Sessions.User, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.AddAsync(Sessions.User, Valid, Ct));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => service.UpdateAsync(Sessions.User, 1, Valid, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => service.UpdateAsync(Sessions.User, 1, 0, Valid, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.DeleteAsync(Sessions.User, 1, Ct));
 
         _cars.VerifyNoOtherCalls();
@@ -55,7 +55,7 @@ public sealed class CarServiceTests
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => cars.GetAllAsync(Sessions.Admin, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => cars.AddAsync(Sessions.Admin, Valid, Ct));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => cars.UpdateAsync(Sessions.Admin, 1, Valid, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => cars.UpdateAsync(Sessions.Admin, 1, 0, Valid, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => cars.DeleteAsync(Sessions.Admin, 1, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.GetAllAsync(Sessions.Admin, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(
@@ -194,14 +194,31 @@ public sealed class CarServiceTests
             .Callback<Actor, Car, CancellationToken>((_, car, _) => sent = car)
             .ReturnsAsync(CarUpdateOutcome.Updated);
 
-        await Service().UpdateAsync(Sessions.Admin, 3, Valid with { Transmission = "Manual", FuelType = "Benzinli", IsListed = false }, Ct);
+        await Service().UpdateAsync(Sessions.Admin, 3, 0, Valid with { Transmission = "Manual", FuelType = "Benzinli", IsListed = false }, Ct);
 
         Assert.NotNull(sent);
         Assert.Equal(("Manual", "Benzinli", false), (sent.Transmission, sent.FuelType, sent.IsListed));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service().UpdateAsync(Sessions.Admin, 3, Valid with { Transmission = "Yarı Otomatik", FuelType = "Benzinli" }, Ct));
+            () => Service().UpdateAsync(Sessions.Admin, 3, 0, Valid with { Transmission = "Yarı Otomatik", FuelType = "Benzinli" }, Ct));
         Assert.Equal([nameof(CarInput.Transmission)], error.FieldErrors.Keys);
+    }
+
+    /// <summary>A form loaded before another admin's change is refused before anything is written, and so is a change the repository finds outdated.</summary>
+    [Fact]
+    public async Task Update_FromAStaleForm_IsRefusedAsStale()
+    {
+        _cars.Setup(c => c.FindAsync(3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Car { Id = 3, Brand = "Anka", Model = "Kent", Transmission = "Otomatik", FuelType = "Benzin", Plate = "00 DMO 001", DailyPrice = 1200m, Version = 2 });
+
+        var early = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, 1, Valid, Ct));
+
+        _cars.Verify(c => c.UpdateAsync(It.IsAny<Actor>(), It.IsAny<Car>(), It.IsAny<CancellationToken>()), Times.Never);
+        _cars.Setup(c => c.UpdateAsync(Sessions.Admin.Actor, It.Is<Car>(car => car.Id == 3 && car.Version == 2), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CarUpdateOutcome.ChangedElsewhere);
+        var late = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, 2, Valid, Ct));
+
+        Assert.All([early, late], e => Assert.Equal((CarService.ChangedElsewhere, true), (e.Message, e.IsStale)));
     }
 
     [Fact]
@@ -209,7 +226,7 @@ public sealed class CarServiceTests
     {
         _cars.Setup(c => c.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync((Car?)null);
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, Valid, Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, 0, Valid, Ct));
 
         Assert.Equal(CarService.NotFound, error.Message);
     }

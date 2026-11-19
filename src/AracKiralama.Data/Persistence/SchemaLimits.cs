@@ -82,6 +82,8 @@ internal static class SchemaLimits
 
     public const string MaintenanceVersionCheck = "[Surum] >= 1";
 
+    public const string CarVersionCheck = "[Surum] >= 1";
+
     public const string EmailFilter = "[Eposta] IS NOT NULL";
     public const string PhoneFilter = "[Telefon] IS NOT NULL";
 }

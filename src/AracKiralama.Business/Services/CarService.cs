@@ -38,8 +38,11 @@ public interface ICarService
     /// <summary>Adds a car (admin only) and returns its id.</summary>
     Task<int> AddAsync(UserSession session, CarInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>Changes a car (admin only).</summary>
-    Task UpdateAsync(UserSession session, int carId, CarInput input, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Changes a car (admin only). <paramref name="expectedVersion"/> is the <see cref="Car.Version"/> the
+    /// form loaded; when the car changed since, nothing is written and the form has to load it again.
+    /// </summary>
+    Task UpdateAsync(UserSession session, int carId, int expectedVersion, CarInput input, CancellationToken cancellationToken = default);
 
     /// <summary>Deletes a car that has never been rented (admin only).</summary>
     Task DeleteAsync(UserSession session, int carId, CancellationToken cancellationToken = default);
@@ -55,6 +58,7 @@ internal sealed class CarService(
     internal const string NotFound = "Araç bulunamadı.";
     internal const string InputInvalid = "Lütfen gerekli alanları doldurun.";
     internal const string PlateTaken = "Bu plaka ile kayıtlı bir araç zaten mevcut.";
+    internal const string ChangedElsewhere = "Araç siz düzenlerken başka biri tarafından değiştirildi. Güncel hali yüklendi; lütfen değişikliğinizi yeniden yapın.";
     internal const string HasRentals = "Kiralama veya bakım geçmişi olan araç silinemez. Kiralamaya kapatmak için \"Kiralamaya açık\" seçeneğini kaldırın.";
 
     public async Task<IReadOnlyList<Car>> GetCatalogAsync(UserSession session, CarFilter filter, CancellationToken cancellationToken = default)
@@ -104,13 +108,19 @@ internal sealed class CarService(
         }
     }
 
-    public async Task UpdateAsync(UserSession session, int carId, CarInput input, CancellationToken cancellationToken = default)
+    public async Task UpdateAsync(UserSession session, int carId, int expectedVersion, CarInput input, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
         var stored = await cars.FindAsync(carId, cancellationToken).ConfigureAwait(false)
-            ?? throw new BusinessRuleException(NotFound);
+            ?? throw BusinessRuleException.Stale(NotFound);
+        if (stored.Version != expectedVersion)
+        {
+            throw BusinessRuleException.Stale(ChangedElsewhere);
+        }
+
         var car = Validate(input, stored);
         car.Id = carId;
+        car.Version = expectedVersion;
 
         CarUpdateOutcome outcome;
         try
@@ -122,9 +132,14 @@ internal sealed class CarService(
             throw PlateTakenError(ex);
         }
 
-        if (outcome != CarUpdateOutcome.Updated)
+        switch (outcome)
         {
-            throw new BusinessRuleException(NotFound);
+            case CarUpdateOutcome.Updated:
+                break;
+            case CarUpdateOutcome.ChangedElsewhere:
+                throw BusinessRuleException.Stale(ChangedElsewhere);
+            default:
+                throw BusinessRuleException.Stale(NotFound);
         }
 
         audit.Record(AuditEvent.CarChanged, AuditRole.Admin);

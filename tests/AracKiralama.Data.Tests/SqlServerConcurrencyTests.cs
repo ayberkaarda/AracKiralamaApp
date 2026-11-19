@@ -227,7 +227,7 @@ public sealed class SqlServerConcurrencyTests
         await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 
         var changing = bApp.GetRequiredService<ICarService>().UpdateAsync(
-            bSession, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 DMT 01", "1", null, true), Ct);
+            bSession, carId, await CarVersionAsync(a, carId), new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 DMT 01", "1", null, true), Ct);
         await gate.WaitUntilReachedAsync(Ct);
         await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
         gate.Release();
@@ -256,7 +256,7 @@ public sealed class SqlServerConcurrencyTests
         await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 
         var changing = bApp.GetRequiredService<ICarService>().UpdateAsync(
-            bSession, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 SRM 01", "1", null, true), Ct);
+            bSession, carId, await CarVersionAsync(a, carId), new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 SRM 01", "1", null, true), Ct);
         await gate.WaitUntilReachedAsync(Ct);
         await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
         await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.Admin), Ct);
@@ -265,6 +265,67 @@ public sealed class SqlServerConcurrencyTests
         await Assert.ThrowsAsync<AccessDeniedException>(() => changing);
         Assert.Equal(100, await database.ScalarAsync("SELECT CAST(GunlukUcret AS int) FROM dbo.Araclar WHERE AracID = @id", Ct, ("@id", carId)));
         Assert.Equal(2, await database.ScalarAsync("SELECT OturumSurumu FROM dbo.Kullanicilar WHERE KullaniciID = @id", Ct, ("@id", b)));
+    }
+
+    /// <summary>
+    /// Two admins loaded the same car and save at once from two application instances: exactly one change
+    /// is stored, the other is refused as stale, and the version rises once.
+    /// </summary>
+    [Fact]
+    public async Task UpdateCar_TwoAdminsSaveTheSameLoadedVersion_ExactlyOneWins()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        await using var b = database.BuildServices();
+        var admin = await SetUpAdminAsync(a);
+
+        for (var round = 0; round < Rounds; round++)
+        {
+            var plate = Plate("VR", round);
+            var carId = await AddCarAsync(a, admin, plate);
+            var version = await CarVersionAsync(a, carId);
+
+            var results = await RaceAsync(
+            [
+                () => a.GetRequiredService<ICarService>().UpdateAsync(admin, carId, version, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", plate, "200", null, true), Ct),
+                () => b.GetRequiredService<ICarService>().UpdateAsync(admin, carId, version, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", plate, "300", null, false), Ct),
+            ]);
+
+            Assert.Single(results, r => r is null);
+            var refused = Assert.IsType<BusinessRuleException>(Assert.Single(results, r => r is not null));
+            Assert.Equal((CarService.ChangedElsewhere, true), (refused.Message, refused.IsStale));
+            Assert.Equal(version + 1, await CarVersionAsync(a, carId));
+        }
+    }
+
+    /// <summary>
+    /// Admin A's change has passed the service's version check and waits for the car's lock while admin B
+    /// raises the price. A's conditional UPDATE then finds a newer version and writes nothing.
+    /// </summary>
+    [Fact]
+    public async Task UpdateCar_ChangedWhileWaitingForTheLock_IsRefusedAsStale()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var carId = await AddCarAsync(a, admin, "00 VRS 01");
+        var gate = CommandGate.BeforeAppLock("AracKiralama.Car." + carId.ToString(CultureInfo.InvariantCulture));
+        await using var aApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var stale = aApp.GetRequiredService<ICarService>().UpdateAsync(
+            admin, carId, 1, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Kırmızı", "00 VRS 01", "100", null, true), Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        await a.GetRequiredService<ICarService>().UpdateAsync(
+            admin, carId, 1, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 VRS 01", "1200", null, false), Ct);
+        gate.Release();
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => stale);
+        Assert.Equal(CarService.ChangedElsewhere, error.Message);
+        Assert.Equal(1200, await database.ScalarAsync("SELECT CAST(GunlukUcret AS int) FROM dbo.Araclar WHERE AracID = @id", Ct, ("@id", carId)));
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Araclar WHERE AracID = @id AND (KiralamayaAcik = 1 OR Renk <> N'Gri')", Ct, ("@id", carId)));
+        Assert.Equal(2, await CarVersionAsync(a, carId));
     }
 
     /// <summary>
@@ -318,7 +379,7 @@ public sealed class SqlServerConcurrencyTests
         await using var changing = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 
         var change = changing.GetRequiredService<ICarService>().UpdateAsync(
-            admin, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 YRS 02", "200", null, true), Ct);
+            admin, carId, await CarVersionAsync(a, carId), new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 YRS 02", "200", null, true), Ct);
         await gate.WaitUntilReachedAsync(Ct);
         var booking = Task.Run(() => rentals.RentAsync(customer, quote, Ct), Ct);
         await database.WaitForBlockedRequestsAsync(1, Ct);

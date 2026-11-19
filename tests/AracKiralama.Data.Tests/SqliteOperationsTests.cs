@@ -49,7 +49,7 @@ public sealed class SqliteOperationsTests : IAsyncLifetime
     {
         var cars = _db.Get<ICarService>();
         var car = await cars.GetAsync(_admin, CarId, Ct);
-        await cars.UpdateAsync(_admin, CarId, new CarInput(car.Brand, car.Model, "2021", car.Transmission, car.FuelType, "1000", car.Color, car.Plate, "850", null, false), Ct);
+        await cars.UpdateAsync(_admin, CarId, await CarVersionAsync(_db.Services, CarId), new CarInput(car.Brand, car.Model, "2021", car.Transmission, car.FuelType, "1000", car.Color, car.Plate, "850", null, false), Ct);
         var availability = _db.Get<IAvailabilityService>();
 
         var unlisted = await Assert.ThrowsAsync<BusinessRuleException>(() => availability.GetCalendarAsync(_customer, CarId, Today, Ct));

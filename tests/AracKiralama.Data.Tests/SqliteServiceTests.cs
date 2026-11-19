@@ -308,6 +308,42 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.Equal(1, await ActiveAsync(CarId));
     }
 
+    /// <summary>
+    /// Admin A loaded a car; admin B raised its price and took it off the list. A's colour fix carries the
+    /// loaded version and the old values: it is refused as stale and B's change stays.
+    /// </summary>
+    [Fact]
+    public async Task UpdateCar_FromAStaleForm_IsRefusedAndKeepsTheOtherChange()
+    {
+        var cars = _db.Get<ICarService>();
+        var loaded = await cars.GetAsync(_admin, CarId, Ct);
+        Assert.Equal(1, loaded.Version);
+        await UpdateCarAsync(CarId, price: "1200", listed: false);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => cars.UpdateAsync(_admin, CarId, loaded.Version, CarInputOf(loaded, color: "Kırmızı"), Ct));
+
+        Assert.Equal(CarService.ChangedElsewhere, error.Message);
+        Assert.True(error.IsStale);
+        var stored = await cars.GetAsync(_admin, CarId, Ct);
+        Assert.Equal((1200m, false, loaded.Color, 2), (stored.DailyPrice, stored.IsListed, stored.Color, stored.Version));
+    }
+
+    /// <summary>The same race decided inside the write, under the car's lock: an outdated version matches no row.</summary>
+    [Fact]
+    public async Task UpdateCarRepository_WithAnOutdatedVersion_WritesNothing()
+    {
+        var repository = _db.Get<ICarRepository>();
+        var loaded = (await repository.FindAsync(CarId, Ct))!;
+        await UpdateCarAsync(CarId, price: "1200");
+        loaded.Color = "Kırmızı";
+
+        Assert.Equal(CarUpdateOutcome.ChangedElsewhere, await repository.UpdateAsync(_admin.Actor, loaded, Ct));
+        loaded.Id = 999;
+        Assert.Equal(CarUpdateOutcome.NotFound, await repository.UpdateAsync(_admin.Actor, loaded, Ct));
+        var stored = (await repository.FindAsync(CarId, Ct))!;
+        Assert.Equal((1200m, 2), (stored.DailyPrice, stored.Version));
+    }
+
     [Fact]
     public async Task AddCar_TakenPlate_IsRefused()
     {
@@ -427,23 +463,25 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     {
         var cars = _db.Get<ICarService>();
         var car = await cars.GetAsync(_admin, carId, Ct);
+        await cars.UpdateAsync(_admin, carId, car.Version, CarInputOf(car, price, listed), Ct);
+    }
+
+    /// <summary>The car as its form shows it, with the given fields changed.</summary>
+    private static CarInput CarInputOf(Car car, string? price = null, bool? listed = null, string? color = null)
+    {
         var culture = System.Globalization.CultureInfo.InvariantCulture;
-        await cars.UpdateAsync(
-            _admin,
-            carId,
-            new CarInput(
-                car.Brand,
-                car.Model,
-                car.Year.ToString(culture),
-                car.Transmission,
-                car.FuelType,
-                car.Mileage.ToString(culture),
-                car.Color,
-                car.Plate,
-                price ?? car.DailyPrice.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR")),
-                car.ImageUrl,
-                listed ?? car.IsListed),
-            Ct);
+        return new CarInput(
+            car.Brand,
+            car.Model,
+            car.Year.ToString(culture),
+            car.Transmission,
+            car.FuelType,
+            car.Mileage.ToString(culture),
+            color ?? car.Color,
+            car.Plate,
+            price ?? car.DailyPrice.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR")),
+            car.ImageUrl,
+            listed ?? car.IsListed);
     }
 }
 

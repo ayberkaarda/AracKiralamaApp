@@ -98,6 +98,9 @@ namespace AracKiralama.UI
         /// <summary>The car whose details are in the form, or <see langword="null"/> when a new one is entered.</summary>
         internal int? SelectedCarId { get; private set; }
 
+        /// <summary>The version of the car in the form as it was loaded; a change sends it back.</summary>
+        internal int SelectedCarVersion { get; private set; }
+
         internal IReadOnlyList<Car> ShownCars { get; private set; } = [];
 
         /// <summary>Loads the car grid; only the latest request is shown. Binding the rows selects nothing.</summary>
@@ -132,6 +135,7 @@ namespace AracKiralama.UI
 
             errorProvider1.Clear();
             SelectedCarId = car.Id;
+            SelectedCarVersion = car.Version;
             txtId.Text = car.Id.ToString(CultureInfo.InvariantCulture);
             txtBrand.Text = car.Brand;
             txtModel.Text = car.Model;
@@ -179,15 +183,26 @@ namespace AracKiralama.UI
                 return;
             }
 
+            var version = SelectedCarVersion;
             await WriteAsync(async () =>
             {
                 try
                 {
-                    await _cars.UpdateAsync(_session, id, ReadInput());
+                    await _cars.UpdateAsync(_session, id, version, ReadInput());
                 }
-                catch (BusinessRuleException ex) when (ex.FieldErrors.Count == 0)
+                catch (BusinessRuleException ex) when (ex.IsStale)
                 {
-                    await ReloadAfterRefusalAsync(id);
+                    // Changed or deleted elsewhere: the form shows the car as it is now.
+                    await LoadCarsAsync();
+                    if (ShownCars.FirstOrDefault(c => c.Id == id) is { } current)
+                    {
+                        SelectCar(current);
+                    }
+                    else
+                    {
+                        ClearForm();
+                    }
+
                     throw;
                 }
 
@@ -342,6 +357,7 @@ namespace AracKiralama.UI
         private void ClearForm()
         {
             SelectedCarId = null;
+            SelectedCarVersion = 0;
             dataGridView1.ClearSelection();
             errorProvider1.Clear();
             foreach (var box in new[] { txtId, txtBrand, txtModel, txtMileage, txtColor, txtPlate, txtDailyPrice, txtStatus, txtImageUrl })

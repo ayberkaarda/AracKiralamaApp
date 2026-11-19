@@ -217,7 +217,7 @@ public sealed class ExclusiveWriteTests
     [Fact]
     public void UpdateCar_DeletedMeanwhile_RefreshesTheListAndClearsTheForm() => Run(() =>
     {
-        var cars = new ControlledCarService { UpdateFailure = new BusinessRuleException("Araç bulunamadı.") };
+        var cars = new ControlledCarService { UpdateFailure = BusinessRuleException.Stale("Araç bulunamadı.") };
         using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
         Assert.True(form.LoadCarsAsync().IsCompletedSuccessfully);
         form.SelectCar(cars.Cars[0]);
@@ -229,6 +229,35 @@ public sealed class ExclusiveWriteTests
         Assert.Null(form.SelectedCarId);
         Assert.Empty(Find<TextBox>(form, "txtBrand").Text);
         Assert.False(Find<Button>(form, "btnUpdateCar").Enabled);
+    });
+
+    /// <summary>
+    /// Another admin raised the price while this form was open: the save carries the loaded version, is
+    /// refused as stale, and the form then shows the car with the other admin's price and version.
+    /// </summary>
+    [Fact]
+    public void UpdateCar_ChangedElsewhere_ReloadsTheCarWithItsNewVersion() => Run(() =>
+    {
+        var cars = new ControlledCarService();
+        cars.Cars[0].Version = 1;
+        using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadCarsAsync().IsCompletedSuccessfully);
+        form.SelectCar(cars.Cars[0]);
+        var changed = ControlledCarService.Car(1, "Anka", "Kent");
+        changed.DailyPrice = 1200m;
+        changed.Version = 2;
+        cars.Cars[0] = changed;
+        cars.UpdateFailure = BusinessRuleException.Stale("Araç siz düzenlerken başka biri tarafından değiştirildi.");
+        Find<TextBox>(form, "txtColor").Text = "Kırmızı";
+
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.Equal((1, 1), cars.LastVersion);
+        Assert.Equal(1, form.SelectedCarId);
+        Assert.Equal(2, form.SelectedCarVersion);
+        Assert.Equal(DisplayFormat.MoneyInput(1200m), Find<TextBox>(form, "txtDailyPrice").Text);
+        Assert.Equal("Beyaz", Find<TextBox>(form, "txtColor").Text);
+        Assert.True(Find<Button>(form, "btnUpdateCar").Enabled);
     });
 
     [Fact]

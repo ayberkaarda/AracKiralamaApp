@@ -107,9 +107,13 @@ internal sealed class ControlledCarService : ICarService
     /// <summary>Thrown by changes instead of completing them.</summary>
     public Exception? UpdateFailure { get; set; }
 
-    public Task UpdateAsync(UserSession session, int carId, CarInput input, CancellationToken cancellationToken = default)
+    /// <summary>The car and the version the last change was sent with.</summary>
+    public (int CarId, int Version)? LastVersion { get; private set; }
+
+    public Task UpdateAsync(UserSession session, int carId, int expectedVersion, CarInput input, CancellationToken cancellationToken = default)
     {
         LastUpdate = input;
+        LastVersion = (carId, expectedVersion);
         return UpdateFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
     }
 

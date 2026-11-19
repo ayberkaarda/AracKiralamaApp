@@ -86,6 +86,12 @@ namespace AracKiralama.Data.Persistence.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("VitesTipi");
 
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1)
+                        .HasColumnName("Surum");
+
                     b.Property<int>("Year")
                         .HasColumnType("int")
                         .HasColumnName("Yil");
@@ -103,6 +109,8 @@ namespace AracKiralama.Data.Persistence.Migrations
                             t.HasCheckConstraint("CK_Araclar_GunlukUcret", "[GunlukUcret] > 0");
 
                             t.HasCheckConstraint("CK_Araclar_Km", "[Km] >= 0");
+
+                            t.HasCheckConstraint("CK_Araclar_Surum", "[Surum] >= 1");
                         });
                 });
 
