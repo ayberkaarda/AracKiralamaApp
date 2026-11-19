@@ -8,11 +8,11 @@ namespace AracKiralama.Business.Tests;
 
 internal static class Sessions
 {
-    public static UserSession User { get; } = new(2, "ornek", UserRole.User);
+    public static UserSession User { get; } = new(2, "ornek", UserRole.User, 0);
 
-    public static UserSession OtherUser { get; } = new(5, "baska", UserRole.User);
+    public static UserSession OtherUser { get; } = new(5, "baska", UserRole.User, 0);
 
-    public static UserSession Admin { get; } = new(1, "yonetici", UserRole.Admin);
+    public static UserSession Admin { get; } = new(1, "yonetici", UserRole.Admin, 0);
 }
 
 /// <summary>The validators the services get from the container.</summary>

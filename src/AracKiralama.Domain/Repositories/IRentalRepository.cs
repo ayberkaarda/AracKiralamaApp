@@ -58,7 +58,7 @@ public sealed record RentalRequest(
     DateOnly EndDate,
     decimal ExpectedDailyPrice,
     decimal Price,
-    int SessionVersion = 0);
+    int SessionVersion);
 
 public enum RentOutcome
 {

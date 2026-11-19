@@ -208,7 +208,7 @@ public sealed class AuthServiceTests
         _users.Setup(u => u.RecordFailedLoginAsync(7, 5, Now.AddMinutes(15), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User), "Yanlis.Sifre1", "Yeni.Sifre12", "Yeni.Sifre12", Ct));
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, 0), "Yanlis.Sifre1", "Yeni.Sifre12", "Yeni.Sifre12", Ct));
 
         Assert.Equal(AuthService.CurrentPasswordWrong, error.Message);
         _users.Verify(u => u.ChangePasswordAsync(It.IsAny<AccountCredentials>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -272,10 +272,31 @@ public sealed class AuthServiceTests
     public async Task ChangePassword_InvalidInput_IsRejectedWithoutTouchingTheRepository(string current, string next, string repeat, string? message)
     {
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User), current, next, repeat, Ct));
+            () => Service().ChangePasswordAsync(new UserSession(7, UserName, UserRole.User, 0), current, next, repeat, Ct));
 
         Assert.Equal(message ?? AccountRules.PasswordInvalid, error.Message);
         _users.VerifyNoOtherCalls();
+    }
+
+    /// <summary>
+    /// Every type that carries a session version needs it explicitly: a call site that forgot it would
+    /// otherwise pass 0, which every account whose role and password never changed accepts.
+    /// </summary>
+    [Theory]
+    [InlineData(typeof(UserSession))]
+    [InlineData(typeof(RentalActor))]
+    [InlineData(typeof(RentalRequest))]
+    [InlineData(typeof(AccountCredentials))]
+    [InlineData(typeof(Actor))]
+    public void SessionVersion_HasNoDefaultValue(Type type)
+    {
+        var parameters = type.GetConstructors(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+            .SelectMany(c => c.GetParameters())
+            .Where(p => string.Equals(p.Name, "sessionVersion", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        Assert.NotEmpty(parameters);
+        Assert.All(parameters, p => Assert.False(p.HasDefaultValue, $"{type.Name}({p.Name}) has a default value."));
     }
 
     private AuthService Service() => new(_users.Object, _hasher, new TestDatabaseClock(_time), new AccessGuard(_users.Object, _audit), _audit, TestValidators.SignIn, TestValidators.SignUp, TestValidators.PasswordChange);
@@ -291,5 +312,5 @@ public sealed class AuthServiceTests
         PasswordFormat format = PasswordFormat.Pbkdf2,
         DateTime? lockoutEnd = null,
         UserRole role = UserRole.User) =>
-        new(7, UserName, role, hash, format, 0, lockoutEnd);
+        new(7, UserName, role, hash, format, 0, lockoutEnd, 0);
 }

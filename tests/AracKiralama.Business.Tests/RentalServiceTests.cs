@@ -90,7 +90,7 @@ public sealed class RentalServiceTests
         var forged = new RentalQuote(3, 2, 10m, 0.01m, Today.AddDays(1), Today.AddDays(30), false);
         var receipt = await Service().RentAsync(Sessions.User, forged, Ct);
 
-        Assert.Equal(new RentalRequest(3, Sessions.User.UserId, Today.AddDays(1), Today.AddDays(3), 10m, 20m), sent);
+        Assert.Equal(new RentalRequest(3, Sessions.User.UserId, Today.AddDays(1), Today.AddDays(3), 10m, 20m, 0), sent);
         Assert.Equal(11, receipt.RentalId);
         Assert.Equal(20m, receipt.Total);
         Assert.Equal(["rental.created user"], _audit.Entries);
@@ -125,7 +125,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task End_ByAUser_IsLimitedToTheirOwnRentals()
     {
-        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), Today, It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false, SessionVersion: 0), Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.NotFound));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().EndAsync(Sessions.User, 9, Ct));
@@ -137,7 +137,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task End_ByAnAdmin_HasNoOwnerFilter()
     {
-        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true), Today, It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true, SessionVersion: 0), Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.Returned));
 
         Assert.Equal(RentalEnding.Returned, await Service().EndAsync(Sessions.Admin, 9, Ct));
@@ -149,12 +149,12 @@ public sealed class RentalServiceTests
     public async Task End_ByADemotedAdmin_IsLimitedToTheirOwnRentals()
     {
         _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.User, 0));
-        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: false), Today, It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: false, SessionVersion: 0), Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.NotFound));
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => Service().EndAsync(Sessions.Admin, 9, Ct));
 
-        _rentals.Verify(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: false), Today, It.IsAny<CancellationToken>()), Times.Once);
+        _rentals.Verify(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: false, SessionVersion: 0), Today, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public sealed class RentalServiceTests
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => service.RentAsync(Sessions.User, quote, Ct));
         Assert.Equal(RentalService.StartInPast, error.Message);
 
-        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), Today.AddDays(2), It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false, SessionVersion: 0), Today.AddDays(2), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.Returned));
         Assert.Equal(RentalEnding.Returned, await service.EndAsync(Sessions.User, 9, Ct));
     }

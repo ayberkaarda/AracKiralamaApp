@@ -207,9 +207,9 @@ internal sealed class NoFormsFactory : IFormFactory
 
 internal static class Sessions
 {
-    public static UserSession User { get; } = new(2, "ornek", UserRole.User);
+    public static UserSession User { get; } = new(2, "ornek", UserRole.User, 0);
 
-    public static UserSession Admin { get; } = new(1, "yonetici", UserRole.Admin);
+    public static UserSession Admin { get; } = new(1, "yonetici", UserRole.Admin, 0);
 }
 
 /// <summary>Contract calls that stay pending until the test completes them.</summary>

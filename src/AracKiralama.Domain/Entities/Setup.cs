@@ -39,7 +39,7 @@ public sealed record AccountCredentials(
     PasswordFormat PasswordFormat,
     int FailedLoginCount,
     DateTime? LockoutEnd,
-    int SessionVersion = 0);
+    int SessionVersion);
 
 /// <summary>A usable setup key, as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);

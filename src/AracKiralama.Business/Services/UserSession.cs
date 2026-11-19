@@ -12,7 +12,7 @@ public sealed class UserSession
 {
     private int _sessionVersion;
 
-    internal UserSession(int userId, string userName, UserRole role, int sessionVersion = 0)
+    internal UserSession(int userId, string userName, UserRole role, int sessionVersion)
     {
         UserId = userId;
         UserName = userName;

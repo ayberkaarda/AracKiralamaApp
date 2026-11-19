@@ -13,7 +13,7 @@ public readonly record struct Actor(int UserId, int SessionVersion);
 /// only its own. The repository checks it, with <see cref="SessionVersion"/>, against the stored account
 /// inside the operation.
 /// </summary>
-public readonly record struct RentalActor(int UserId, bool AsAdmin, int SessionVersion = 0)
+public readonly record struct RentalActor(int UserId, bool AsAdmin, int SessionVersion)
 {
     public Actor Actor => new(UserId, SessionVersion);
 }
