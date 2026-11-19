@@ -52,11 +52,14 @@ public sealed class SqlServerClockTests
         var admin = await SetUpAdminAsync(a);
         var customer = await RegisterAsync(a, "musteri", 1);
         var carId = await AddCarAsync(a, admin, "00 SAT 02");
-        await using var behind = database.BuildServices(clock: await ClockAsync(database, TimeSpan.FromDays(-2)));
+        var behindClock = await ClockAsync(database, TimeSpan.FromDays(-2));
+        await using var behind = database.BuildServices(clock: behindClock);
         var rentals = behind.GetRequiredService<IRentalService>();
 
-        // Tomorrow by the wrong clock is yesterday by the database's.
-        var quote = rentals.Quote(carId, 100m, rentals.Today.AddDays(1), 2);
+        // Tomorrow by the wrong clock is yesterday by the database's; a screen that trusted the wrong
+        // clock would offer it.
+        var wrongToday = DateOnly.FromDateTime(behindClock.GetUtcNow().UtcDateTime);
+        var quote = rentals.Quote(carId, 100m, wrongToday.AddDays(1), 2, wrongToday);
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(customer, quote, Ct));
 
         Assert.Equal(RentalService.StartInPast, error.Message);
@@ -89,6 +92,33 @@ public sealed class SqlServerClockTests
         await database.ExecuteAsync("UPDATE dbo.Kullanicilar SET KilitBitis = DATEADD(SECOND, -1, SYSUTCDATETIME()) WHERE KullaniciAdi = N'kilit'", Ct);
         await using var behind = database.BuildServices(clock: await ClockAsync(database, TimeSpan.FromDays(-1)));
         Assert.Equal("kilit", (await behind.GetRequiredService<IAuthService>().SignInAsync("kilit", Password, Ct)).UserName);
+    }
+
+    /// <summary>
+    /// The newest model year a car may have is next year by the database's clock: a computer whose clock
+    /// is years ahead cannot store a car from the future, and one whose clock is years behind can still
+    /// store next year's model.
+    /// </summary>
+    [Fact]
+    public async Task AddCar_ClientClockYearsAheadOrBehind_FollowsTheModelYearByTheDatabaseClock()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var nextYear = (await database.ServerUtcNowAsync(Ct)).UtcDateTime.Year + 1;
+        await using var ahead = database.BuildServices(clock: await ClockAsync(database, TimeSpan.FromDays(3 * 366)));
+        await using var behind = database.BuildServices(clock: await ClockAsync(database, TimeSpan.FromDays(-3 * 366)));
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => ahead.GetRequiredService<ICarService>().AddAsync(admin, Car("00 YIL 01", nextYear + 1), Ct));
+        Assert.True(error.FieldErrors.ContainsKey(nameof(CarInput.Year)));
+        await behind.GetRequiredService<ICarService>().AddAsync(admin, Car("00 YIL 02", nextYear), Ct);
+
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Araclar", Ct));
+
+        static CarInput Car(string plate, int year) =>
+            new("Anka", "Deneme", year.ToString(System.Globalization.CultureInfo.InvariantCulture), "Manuel", "Benzin", "1000", "Gri", plate, "100", null, true);
     }
 
     /// <summary>A computer clock that is <paramref name="offset"/> away from the database server's clock.</summary>

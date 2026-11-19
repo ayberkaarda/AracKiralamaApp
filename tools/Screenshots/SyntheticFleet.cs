@@ -41,8 +41,6 @@ internal sealed class SyntheticFleet : IAuthService, ICarService, IRentalService
 
     public RentalPolicy Policy { get; } = new() { LongRentalDays = 7, LongRentalDiscountPercent = 10 };
 
-    public DateOnly Today => SampleToday;
-
     public UserSession Customer { get; } = Session(2, "ornek.musteri", UserRole.User);
 
     public UserSession Admin { get; } = Session(1, "yonetici", UserRole.Admin);
@@ -83,7 +81,9 @@ internal sealed class SyntheticFleet : IAuthService, ICarService, IRentalService
 
     public Task DeleteAsync(UserSession session, int carId, CancellationToken cancellationToken = default) => Unused<bool>();
 
-    public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days)
+    public Task<DateOnly> GetTodayAsync(UserSession session, CancellationToken cancellationToken = default) => Task.FromResult(SampleToday);
+
+    public RentalQuote Quote(int carId, decimal dailyPrice, DateOnly startDate, int days, DateOnly today)
     {
         var total = days * dailyPrice;
         var discounted = days >= Policy.LongRentalDays && Policy.LongRentalDays > 0;
@@ -109,7 +109,7 @@ internal sealed class SyntheticFleet : IAuthService, ICarService, IRentalService
     public bool IsUnderway(RentalDetails rental)
     {
         ArgumentNullException.ThrowIfNull(rental);
-        return rental.StartDate <= Today;
+        return rental.StartDate <= SampleToday;
     }
 
     public Task<RentalEnding> EndAsync(UserSession session, int rentalId, CancellationToken cancellationToken = default) => Unused<RentalEnding>();
@@ -184,7 +184,7 @@ internal sealed class SyntheticFleet : IAuthService, ICarService, IRentalService
         RentalDetails Rental(int id, int carId, int userId, string userName, DateOnly start, int days)
         {
             var car = _cars.Single(c => c.Id == carId);
-            return new RentalDetails(id, carId, car.Brand, car.Model, car.Transmission, car.FuelType, car.Plate, null, userId, userName, start, start.AddDays(days), Quote(carId, car.DailyPrice, start, days).Total, RentalStatus.Active);
+            return new RentalDetails(id, carId, car.Brand, car.Model, car.Transmission, car.FuelType, car.Plate, null, userId, userName, start, start.AddDays(days), Quote(carId, car.DailyPrice, start, days, SampleToday).Total, RentalStatus.Active);
         }
 
         yield return Rental(41, 1, 2, "ornek.musteri", Day(8), 4);

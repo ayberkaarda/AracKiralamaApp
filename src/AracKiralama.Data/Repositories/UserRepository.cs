@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AracKiralama.Data.Repositories;
 
-internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFactory) : IUserRepository
+internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFactory, TimeProvider timeProvider) : IUserRepository
 {
     public async Task<AccountCredentials?> FindByUserNameAsync(string userName, CancellationToken cancellationToken = default)
     {
@@ -50,7 +50,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.SessionVersion))
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.EditVersion))
             .SingleOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -61,7 +61,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return await db.Users
             .AsNoTracking()
             .OrderBy(u => u.Id)
-            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.SessionVersion))
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role, u.EditVersion))
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -157,13 +157,14 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
             var hash = update.NewPasswordHash;
             var newPassword = hash is not null;
 
-            // The WHERE clause is the final decision: the account still has the session version the form
-            // loaded (no role or password change since, so a stale form cannot give back a role another
-            // admin just removed), and an admin keeps the role or another admin exists. The admin role
-            // lock above keeps a concurrent demotion from passing the same check.
+            // The WHERE clause is the final decision: the account still has the edit version the form
+            // loaded (no edit of any field since, so a stale form can neither give back a role another
+            // admin just removed nor restore an e-mail address another admin just corrected), and an admin
+            // keeps the role or another admin exists. The admin role lock above keeps a concurrent
+            // demotion from passing the same check.
             var updated = await db.Users
                 .Where(u => u.Id == id
-                    && u.SessionVersion == expectedVersion
+                    && u.EditVersion == expectedVersion
                     && (keepsAdmin || u.Role != UserRole.Admin || db.Users.Any(o => o.Id != id && o.Role == UserRole.Admin)))
                 .ExecuteUpdateAsync(
                     s =>
@@ -171,6 +172,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
                         // A new role or password ends every open session of the account for good: the
                         // version is read before the SET, so it rises exactly when the stored role differs.
                         s.SetProperty(u => u.SessionVersion, u => newPassword || u.Role != role ? u.SessionVersion + 1 : u.SessionVersion)
+                            .SetProperty(u => u.EditVersion, u => u.EditVersion + 1)
                             .SetProperty(u => u.UserName, update.UserName)
                             .SetProperty(u => u.Email, update.Email)
                             .SetProperty(u => u.Phone, update.Phone)
@@ -195,7 +197,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
 
             var version = await db.Users
                 .Where(u => u.Id == id)
-                .Select(u => (int?)u.SessionVersion)
+                .Select(u => (int?)u.EditVersion)
                 .SingleOrDefaultAsync(cancellationToken)
                 .ConfigureAwait(false);
             return version switch
@@ -259,8 +261,9 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         var verifiedFormat = verified.PasswordFormat;
 
         // The WHERE clause is the final decision: the password is still the verified one and the changing
-        // session is still current (no role change or other password change since). The new version ends
-        // every other session of the account in the same statement.
+        // session is still current (no role change or other password change since). The new session
+        // version ends every other session of the account in the same statement; the new edit version
+        // tells an admin's form loaded before that it is stale.
         var updated = await db.Users
             .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat && u.SessionVersion == sessionVersion)
             .ExecuteUpdateAsync(
@@ -268,7 +271,8 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
                     .SetProperty(u => u.PasswordHash, newPasswordHash)
                     .SetProperty(u => u.PasswordFormat, PasswordFormat.Pbkdf2)
                     .SetProperty(u => u.FailedLoginCount, 0)
-                    .SetProperty(u => u.SessionVersion, u => u.SessionVersion + 1),
+                    .SetProperty(u => u.SessionVersion, u => u.SessionVersion + 1)
+                    .SetProperty(u => u.EditVersion, u => u.EditVersion + 1),
                 cancellationToken)
             .ConfigureAwait(false);
         return updated == 1 ? sessionVersion + 1 : null;
@@ -359,19 +363,60 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         }
     }
 
-    public async Task RecordFailedLoginAsync(int userId, int maxAttempts, DateTime lockoutEnd, CancellationToken cancellationToken = default)
+    public async Task<bool> RecordFailedLoginAsync(
+        AccountCredentials verified,
+        int maxAttempts,
+        TimeSpan lockoutDuration,
+        CancellationToken cancellationToken = default)
     {
-        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(verified);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxAttempts, 1);
 
-        // One UPDATE statement, so concurrent failures cannot lose increments.
-        await db.Users
-            .Where(u => u.Id == userId)
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var id = verified.Id;
+        var verifiedHash = verified.PasswordHash;
+        var verifiedFormat = verified.PasswordFormat;
+        var verifiedVersion = verified.SessionVersion;
+
+        // One UPDATE statement, so concurrent failures cannot lose increments, and its WHERE clause is the
+        // final decision: SQL Server evaluates it under the row's update lock, so of failures that all read
+        // the account unlocked, the one that locks it makes the rest match no row. A password set or a role
+        // changed since the check (the session version) also matches no row, so a delayed failure cannot
+        // undo an admin's reset.
+        if (db.Database.IsSqlServer())
+        {
+            // The lock is checked and its end computed with the database's clock at the write.
+            var seconds = (int)Math.Ceiling(lockoutDuration.TotalSeconds);
+            var format = (int)verifiedFormat;
+            var counted = await db.Database.ExecuteSqlAsync(
+                $"""
+                UPDATE dbo.Kullanicilar
+                SET BasarisizGiris = CASE WHEN BasarisizGiris + 1 >= {maxAttempts} THEN 0 ELSE BasarisizGiris + 1 END,
+                    KilitBitis = CASE WHEN BasarisizGiris + 1 >= {maxAttempts} THEN DATEADD(SECOND, {seconds}, SYSUTCDATETIME()) ELSE KilitBitis END
+                WHERE KullaniciID = {id}
+                  AND (KilitBitis IS NULL OR KilitBitis <= SYSUTCDATETIME())
+                  AND Sifre = {verifiedHash} AND SifreBicimi = {format} AND OturumSurumu = {verifiedVersion}
+                """,
+                cancellationToken).ConfigureAwait(false);
+            return counted == 1;
+        }
+
+        // Other providers (the tests' SQLite) have no database clock and use the computer's.
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        var lockoutEnd = now + lockoutDuration;
+        var updated = await db.Users
+            .Where(u => u.Id == id
+                && (u.LockoutEnd == null || u.LockoutEnd <= now)
+                && u.PasswordHash == verifiedHash
+                && u.PasswordFormat == verifiedFormat
+                && u.SessionVersion == verifiedVersion)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.LockoutEnd, u => u.FailedLoginCount + 1 >= maxAttempts ? lockoutEnd : u.LockoutEnd)
                     .SetProperty(u => u.FailedLoginCount, u => u.FailedLoginCount + 1 >= maxAttempts ? 0 : u.FailedLoginCount + 1),
                 cancellationToken)
             .ConfigureAwait(false);
+        return updated == 1;
     }
 
     public async Task<bool> RecordSuccessfulLoginAsync(

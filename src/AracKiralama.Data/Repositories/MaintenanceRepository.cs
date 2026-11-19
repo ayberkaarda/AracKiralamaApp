@@ -19,7 +19,7 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
             .ConfigureAwait(false);
     }
 
-    public async Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, CancellationToken cancellationToken = default)
+    public async Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, int maxDaysFromToday, CancellationToken cancellationToken = default)
     {
         RequireRange(values);
 
@@ -30,6 +30,14 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
         // check below and the commit, and no record can be added while a booking checks them.
         await Locks.CarAsync(db, carId, cancellationToken).ConfigureAwait(false);
         await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
+
+        // Read after the lock was granted, inside the transaction: the day limits are decided, and the
+        // record is stamped, with the time of the write, also when the request waited across midnight.
+        var nowUtc = await DatabaseClock.ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
+        if (!WithinDays(values, DatabaseClock.LocalDate(nowUtc, timeProvider), maxDaysFromToday))
+        {
+            return new MaintenanceWriteResult(MaintenanceOutcome.DatesOutOfRange);
+        }
 
         if (!await db.Cars.AnyAsync(c => c.Id == carId, cancellationToken).ConfigureAwait(false))
         {
@@ -46,8 +54,6 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
             return new MaintenanceWriteResult(MaintenanceOutcome.OverlapsMaintenance);
         }
 
-        // Stamped after the lock was granted, inside the transaction, so the time is the write's own.
-        var nowUtc = await DatabaseClock.ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
         var record = new MaintenanceRecord
         {
             CarId = carId,
@@ -72,6 +78,7 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
         int recordId,
         int expectedVersion,
         MaintenanceValues changed,
+        int maxDaysFromToday,
         CancellationToken cancellationToken = default)
     {
         RequireRange(changed);
@@ -81,6 +88,13 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
         if (await LockCarOfAsync(db, admin, recordId, cancellationToken).ConfigureAwait(false) is not { } carId)
         {
             return new MaintenanceWriteResult(MaintenanceOutcome.NotFound);
+        }
+
+        // Read after the lock was granted: the day limits and the stamp use the time of the write.
+        var nowUtc = await DatabaseClock.ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
+        if (!WithinDays(changed, DatabaseClock.LocalDate(nowUtc, timeProvider), maxDaysFromToday))
+        {
+            return await RefusalAsync(db, recordId, expectedVersion, MaintenanceOutcome.DatesOutOfRange, cancellationToken).ConfigureAwait(false);
         }
 
         if (await RentalRepository.OverlapsAsync(db, carId, changed.StartDate, changed.EndDate, cancellationToken).ConfigureAwait(false))
@@ -97,7 +111,6 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
         // The WHERE clause is the final decision: a record cancelled or changed since the form loaded it
         // matches no row, so a stale form never writes over another admin's change.
         var (kind, description, start, end, cost) = changed;
-        var nowUtc = await DatabaseClock.ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
         var updated = await db.Maintenance
             .Where(m => m.Id == recordId && m.Status == MaintenanceStatus.Active && m.Version == expectedVersion)
             .ExecuteUpdateAsync(
@@ -208,6 +221,10 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
 
         return new MaintenanceWriteResult(stored.Version != expectedVersion ? MaintenanceOutcome.ChangedElsewhere : otherwise);
     }
+
+    /// <summary>Whether the range starts at most <paramref name="maxDays"/> days before and ends at most that many days after <paramref name="today"/>.</summary>
+    private static bool WithinDays(MaintenanceValues values, DateOnly today, int maxDays) =>
+        values.StartDate.DayNumber >= today.DayNumber - maxDays && values.EndDate.DayNumber <= today.DayNumber + maxDays;
 
     private static void RequireRange(MaintenanceValues values)
     {

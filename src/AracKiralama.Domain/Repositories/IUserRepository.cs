@@ -36,10 +36,12 @@ public interface IUserRepository
 
     /// <summary>
     /// Changes an account's name, contact data and role and, when <see cref="AccountUpdate.NewPasswordHash"/>
-    /// is set, its password. The last admin cannot lose the admin role, and an account whose session
-    /// version is no longer <see cref="AccountUpdate.ExpectedVersion"/> is not changed: the checks and the
-    /// write are one conditional UPDATE, so two concurrent demotions cannot both succeed and a stale form
-    /// cannot give back a role another admin just removed. Account
+    /// is set, its password. The last admin cannot lose the admin role, and an account whose edit version
+    /// is no longer <see cref="AccountUpdate.ExpectedVersion"/> is not changed: the checks and the write
+    /// are one conditional UPDATE, so two concurrent demotions cannot both succeed and a stale form can
+    /// neither give back a role another admin just removed nor undo another admin's correction of the
+    /// contact data. Every change raises the edit version; a new role or password also raises the session
+    /// version, which ends the account's sessions. Account
     /// <paramref name="admin"/>, the admin making the change, must still be an admin at the write,
     /// decided under the lock every role change takes.
     /// </summary>
@@ -59,7 +61,7 @@ public interface IUserRepository
     /// <paramref name="newPasswordHash"/> and raises the session version, in one conditional UPDATE, only
     /// while the stored password is still the one that was verified and the session version is still
     /// <paramref name="sessionVersion"/> (the changing session's). Every other open session of the account
-    /// ends with it.
+    /// ends with it, and the edit version rises as on every other edit of the account.
     /// </summary>
     /// <returns>The new session version, or <see langword="null"/> when nothing was written.</returns>
     Task<int?> ChangePasswordAsync(AccountCredentials verified, int sessionVersion, string newPasswordHash, CancellationToken cancellationToken);
@@ -87,10 +89,15 @@ public interface IUserRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Counts a failed sign-in atomically. When the count reaches <paramref name="maxAttempts"/> the
-    /// account is locked until <paramref name="lockoutEnd"/> and the count starts again from zero.
+    /// Counts a failed sign-in of <paramref name="verified"/> in one conditional UPDATE. It is counted only
+    /// while the account is not locked by the database's clock at the moment of the write and still has the
+    /// password value, format and session version that were checked: a failure that arrives at an account
+    /// locked meanwhile, or after an admin set a new password, changes nothing. When the count reaches
+    /// <paramref name="maxAttempts"/> the account is locked for <paramref name="lockoutDuration"/> from the
+    /// database's clock at the write and the count starts again from zero.
     /// </summary>
-    Task RecordFailedLoginAsync(int userId, int maxAttempts, DateTime lockoutEnd, CancellationToken cancellationToken = default);
+    /// <returns>Whether the failure was counted.</returns>
+    Task<bool> RecordFailedLoginAsync(AccountCredentials verified, int maxAttempts, TimeSpan lockoutDuration, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Records a successful sign-in in one conditional UPDATE: only while the account is not locked at
@@ -121,7 +128,7 @@ public enum AccountFields
 }
 
 /// <summary>
-/// An admin's change of an account, made in a form that loaded the account with session version
+/// An admin's change of an account, made in a form that loaded the account with edit version
 /// <see cref="ExpectedVersion"/>.
 /// </summary>
 public sealed record AccountUpdate(int UserId, int ExpectedVersion, string UserName, string? Email, string? Phone, UserRole Role, string? NewPasswordHash);
@@ -135,7 +142,7 @@ public enum AccountUpdateOutcome
     LastAdmin = 2,
 
     /// <summary>
-    /// The account's role or password changed since the form loaded it (its session version is no longer
+    /// The account was edited since the form loaded it (its edit version is no longer
     /// <see cref="AccountUpdate.ExpectedVersion"/>); nothing was written.
     /// </summary>
     ChangedElsewhere = 3,

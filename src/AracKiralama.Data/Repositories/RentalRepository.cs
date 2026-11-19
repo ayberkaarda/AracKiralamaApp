@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AracKiralama.Data.Repositories;
 
-internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextFactory) : IRentalRepository
+internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextFactory, TimeProvider timeProvider) : IRentalRepository
 {
     public async Task<RentResult> RentAsync(RentalRequest request, CancellationToken cancellationToken = default)
     {
@@ -24,6 +24,19 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
 
         // The renter's account must still exist with the session it booked from.
         await Actors.RequireAsync(db, new Actor(request.UserId, request.SessionVersion), admin: false, cancellationToken).ConfigureAwait(false);
+
+        // The first allowed day is decided again with the date of the write: a booking sent before
+        // midnight that got the lock after it may no longer start yesterday.
+        var today = await DatabaseClock.ReadTodayAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
+        if (request.StartDate < today)
+        {
+            return new RentResult(RentOutcome.StartInPast, 0);
+        }
+
+        if (request.StartDate.DayNumber - today.DayNumber > request.MaxAdvanceDays)
+        {
+            return new RentResult(RentOutcome.StartTooFar, 0);
+        }
 
         var car = await db.Cars
             .AsNoTracking()
@@ -89,7 +102,7 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         }
     }
 
-    public async Task<EndRentalResult> EndAsync(int rentalId, RentalActor actor, DateOnly today, CancellationToken cancellationToken = default)
+    public async Task<EndRentalResult> EndAsync(int rentalId, RentalActor actor, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -129,6 +142,9 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         }
 
         // A rental that has not started frees all its days; one under way frees the days from today on.
+        // Today is read now, under the lock: a request sent before midnight that got the lock after it
+        // returns a rental that has started by then instead of cancelling it.
+        var today = await DatabaseClock.ReadTodayAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
         var cancel = today < startDate.Value;
         var active = db.Rentals.Where(r => r.Id == rentalId && r.Status == RentalStatus.Active);
         var changed = cancel

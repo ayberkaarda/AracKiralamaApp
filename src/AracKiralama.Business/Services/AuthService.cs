@@ -33,7 +33,8 @@ public interface IAuthService
 
 /// <remarks>
 /// Sign-in locks are set and checked with the database's clock, so a computer whose clock is ahead
-/// does not see another computer's lock as over, and one whose clock is behind does not extend it.
+/// does not see another computer's lock as over, and one whose clock is behind does not extend it. A
+/// failure is counted by one conditional UPDATE that checks the lock with that clock at the write.
 /// </remarks>
 internal sealed class AuthService(
     IUserRepository users,
@@ -96,11 +97,9 @@ internal sealed class AuthService(
         var result = passwordHasher.Verify(password, account.PasswordHash, account.PasswordFormat);
         if (result == PasswordVerificationResult.Failed)
         {
-            await users.RecordFailedLoginAsync(
-                account.Id,
-                LoginPolicy.MaxFailedAttempts,
-                now + LoginPolicy.LockoutDuration,
-                cancellationToken).ConfigureAwait(false);
+            // Counted only if the account is still unlocked and unchanged at the write, by the database's
+            // clock then; the lock's end is computed there too.
+            await users.RecordFailedLoginAsync(account, LoginPolicy.MaxFailedAttempts, LoginPolicy.LockoutDuration, cancellationToken).ConfigureAwait(false);
             throw Refused();
         }
 
@@ -200,7 +199,7 @@ internal sealed class AuthService(
         if (passwordHasher.Verify(currentPassword, account.PasswordHash, account.PasswordFormat) == PasswordVerificationResult.Failed)
         {
             // Counted like a failed sign-in: an unattended session cannot be used to guess the password.
-            await users.RecordFailedLoginAsync(account.Id, LoginPolicy.MaxFailedAttempts, now + LoginPolicy.LockoutDuration, cancellationToken).ConfigureAwait(false);
+            await users.RecordFailedLoginAsync(account, LoginPolicy.MaxFailedAttempts, LoginPolicy.LockoutDuration, cancellationToken).ConfigureAwait(false);
             audit.Record(AuditEvent.PasswordChangeRefused, role);
             throw new BusinessRuleException(CurrentPasswordWrong);
         }

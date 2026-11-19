@@ -217,10 +217,11 @@ public sealed partial class LoggingTests : IDisposable
         var customer = await auth.SignInAsync(CustomerName, CustomerPassword, Ct);
 
         var car = await cars.GetAsync(customer, carId, Ct);
-        var rental = await rentals.RentAsync(customer, rentals.Quote(carId, car.DailyPrice, rentals.Today.AddDays(1), 3), Ct);
+        var today = await rentals.GetTodayAsync(customer, Ct);
+        var rental = await rentals.RentAsync(customer, rentals.Quote(carId, car.DailyPrice, today.AddDays(1), 3, today), Ct);
         await auth.RegisterAsync("baska.musteri", CustomerPassword, "baska@example.com", "5559876543", Ct);
         var other = await auth.SignInAsync("baska.musteri", CustomerPassword, Ct);
-        await app.AttemptAsync(() => rentals.RentAsync(other, rentals.Quote(carId, car.DailyPrice, rentals.Today.AddDays(2), 2), Ct)); // days taken
+        await app.AttemptAsync(() => rentals.RentAsync(other, rentals.Quote(carId, car.DailyPrice, today.AddDays(2), 2, today), Ct)); // days taken
         await app.AttemptAsync(() => rentals.EndAsync(other, rental.RentalId, Ct)); // not theirs
         await app.AttemptAsync(() => cars.GetAllAsync(other, Ct)); // admin only
         app.Clock.Advance(TimeSpan.FromDays(2));
@@ -342,8 +343,9 @@ public sealed partial class LoggingTests : IDisposable
         await auth.RegisterAsync("baska.musteri", CustomerPassword, "baska@example.com", "5559876543", Ct);
         var owner = await auth.SignInAsync(CustomerName, CustomerPassword, Ct);
         var other = await auth.SignInAsync("baska.musteri", CustomerPassword, Ct);
-        var active = await rentals.RentAsync(owner, rentals.Quote(carId, 100m, rentals.Today.AddDays(1), 2), Ct);
-        var ended = await rentals.RentAsync(other, rentals.Quote(carId, 100m, rentals.Today.AddDays(5), 2), Ct);
+        var today = await rentals.GetTodayAsync(owner, Ct);
+        var active = await rentals.RentAsync(owner, rentals.Quote(carId, 100m, today.AddDays(1), 2, today), Ct);
+        var ended = await rentals.RentAsync(other, rentals.Quote(carId, 100m, today.AddDays(5), 2, today), Ct);
         await rentals.EndAsync(other, ended.RentalId, Ct);
         app.CloseAndRead();
 

@@ -151,7 +151,7 @@ public sealed class SetupAuthorityTests
         var contract = await app.GetRequiredService<IContractService>().CreateAsync(session, receipt.RentalId, Ct);
         Assert.NotEmpty(contract.Content);
         var maintenance = app.GetRequiredService<IMaintenanceService>();
-        var today = app.GetRequiredService<IRentalService>().Today;
+        var today = await app.GetRequiredService<IRentalService>().GetTodayAsync(admin, Ct);
         var recordId = await maintenance.AddAsync(admin, carId, new MaintenanceInput(MaintenanceKind.Maintenance, "Bakım", today.AddDays(1), today.AddDays(3), "100"), Ct);
         await maintenance.UpdateAsync(admin, recordId, 1, new MaintenanceInput(MaintenanceKind.Damage, "Hasar", today.AddDays(1), today.AddDays(2), null), Ct);
         Assert.Equal(DayState.Maintenance, (await app.GetRequiredService<IAvailabilityService>().GetCalendarAsync(session, carId, today.AddDays(1), Ct)).Days.Single(d => d.Date == today.AddDays(1)).State);

@@ -108,7 +108,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     public async Task Rent_PriceChangedAfterTheQuote_IsRefused()
     {
         var rentals = _db.Get<IRentalService>();
-        var quote = rentals.Quote(CarId, 850m, Today, 2);
+        var quote = rentals.Quote(CarId, 850m, Today, 2, Today);
         await UpdateCarAsync(CarId, price: "900");
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(_customer, quote, Ct));
@@ -123,7 +123,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await UpdateCarAsync(CarId, listed: false);
 
         var rentals = _db.Get<IRentalService>();
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(_customer, rentals.Quote(CarId, 850m, Today, 1), Ct));
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(_customer, rentals.Quote(CarId, 850m, Today, 1, Today), Ct));
 
         Assert.Equal(RentalService.NotAvailable, error.Message);
         Assert.DoesNotContain(await _db.Get<ICarService>().GetCatalogAsync(_customer, CarFilter.None, Ct), c => c.Id == CarId);
@@ -327,8 +327,8 @@ public sealed class SqliteServiceTests : IAsyncLifetime
             () => cars.AddAsync(asCustomer, new Car { Brand = "A", Model = "B", Year = 2020, Transmission = "Manuel", FuelType = "Benzin", Color = "Gri", Plate = "00 YOK 01", DailyPrice = 1m }, Ct),
             () => cars.UpdateAsync(asCustomer, car, Ct),
             () => cars.DeleteAsync(asCustomer, OtherCarId, Ct),
-            () => rentals.EndAsync(receipt.RentalId, new RentalActor(customer, AsAdmin: true, _customer.SessionVersion), Today, Ct),
-            () => rentals.EndAsync(receipt.RentalId, new RentalActor(999, AsAdmin: false, SessionVersion: 0), Today, Ct),
+            () => rentals.EndAsync(receipt.RentalId, new RentalActor(customer, AsAdmin: true, _customer.SessionVersion), Ct),
+            () => rentals.EndAsync(receipt.RentalId, new RentalActor(999, AsAdmin: false, SessionVersion: 0), Ct),
         ];
 
         foreach (var operation in refused)
@@ -442,6 +442,50 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.True(error.IsStale);
         var stored = (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == x);
         Assert.Equal((UserRole.User, (string?)null, 1), (stored.Role, stored.Phone, stored.Version));
+    }
+
+    /// <summary>
+    /// Admins A and B load the same customer. A corrects the e-mail address; then B saves a new phone
+    /// number from the form loaded before, which still carries the old address. Every account edit raises
+    /// the edit version, so B's save is refused as stale and A's correction stays. A change of contact data
+    /// is no reason to end the customer's sessions: the session version stays as it was.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccount_FromAFormLoadedBeforeAnEmailFix_IsRefusedAndKeepsTheFix()
+    {
+        var accounts = _db.Get<IAccountService>();
+        await accounts.AddAsync(_admin, new AccountInput("badmin", Password, null, null, UserRole.Admin), Ct);
+        var bSession = await _db.Get<IAuthService>().SignInAsync("badmin", Password, Ct);
+        var loadedByA = (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == _customer.UserId);
+        var loadedByB = (await accounts.GetAllAsync(bSession, Ct)).Single(u => u.Id == _customer.UserId);
+
+        await accounts.UpdateAsync(_admin, loadedByA.Id, loadedByA.Version, new AccountInput(loadedByA.UserName, null, "duzeltilmis@example.com", loadedByA.Phone, loadedByA.Role), Ct);
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => accounts.UpdateAsync(bSession, loadedByB.Id, loadedByB.Version, new AccountInput(loadedByB.UserName, null, loadedByB.Email, "5540000099", loadedByB.Role), Ct));
+
+        Assert.Equal(AccountService.ChangedElsewhere, error.Message);
+        Assert.True(error.IsStale);
+        var stored = (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == _customer.UserId);
+        Assert.Equal(("duzeltilmis@example.com", loadedByA.Phone, loadedByA.Version + 1), (stored.Email, stored.Phone, stored.Version));
+        Assert.Empty(await _db.Get<IRentalService>().GetMyActiveRentalsAsync(_customer, Ct));
+    }
+
+    /// <summary>
+    /// The same race decided inside the write: the e-mail fix committed after the stale form passed the
+    /// service's check. The conditional UPDATE finds a newer edit version and writes nothing.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccountRepository_AfterAContactDataEdit_WritesNothing()
+    {
+        var users = _db.Get<IUserRepository>();
+        var loaded = (await users.GetSummaryAsync(_customer.UserId, Ct))!;
+        await _db.Get<IAccountService>().UpdateAsync(_admin, loaded.Id, loaded.Version, new AccountInput(loaded.UserName, null, "duzeltilmis@example.com", loaded.Phone, loaded.Role), Ct);
+
+        var outcome = await users.UpdateAsync(_admin.Actor, new AccountUpdate(loaded.Id, loaded.Version, loaded.UserName, loaded.Email, "5540000099", loaded.Role, null), Ct);
+
+        Assert.Equal(AccountUpdateOutcome.ChangedElsewhere, outcome);
+        var stored = (await users.GetSummaryAsync(_customer.UserId, Ct))!;
+        Assert.Equal(("duzeltilmis@example.com", loaded.Phone), (stored.Email, stored.Phone));
     }
 
     /// <summary>

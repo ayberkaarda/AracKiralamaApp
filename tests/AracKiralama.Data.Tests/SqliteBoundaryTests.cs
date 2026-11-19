@@ -43,10 +43,10 @@ public sealed class SqliteBoundaryTests : IAsyncLifetime
     {
         var rentals = _db.Get<IRentalService>();
 
-        Assert.Equal("Gün sayısı 1 ile 30 arasında olmalıdır.", Refusal(() => rentals.Quote(CarId, DailyPrice, Today, 0)));
-        Assert.Equal("Gün sayısı 1 ile 30 arasında olmalıdır.", Refusal(() => rentals.Quote(CarId, DailyPrice, Today, 31)));
-        Assert.Equal(RentalService.StartInPast, Refusal(() => rentals.Quote(CarId, DailyPrice, Today.AddDays(-1), 1)));
-        Assert.Equal("Kiralama en fazla 60 gün sonrası için yapılabilir.", Refusal(() => rentals.Quote(CarId, DailyPrice, Today.AddDays(61), 1)));
+        Assert.Equal("Gün sayısı 1 ile 30 arasında olmalıdır.", Refusal(() => rentals.Quote(CarId, DailyPrice, Today, 0, Today)));
+        Assert.Equal("Gün sayısı 1 ile 30 arasında olmalıdır.", Refusal(() => rentals.Quote(CarId, DailyPrice, Today, 31, Today)));
+        Assert.Equal(RentalService.StartInPast, Refusal(() => rentals.Quote(CarId, DailyPrice, Today.AddDays(-1), 1, Today)));
+        Assert.Equal("Kiralama en fazla 60 gün sonrası için yapılabilir.", Refusal(() => rentals.Quote(CarId, DailyPrice, Today.AddDays(61), 1, Today)));
         Assert.Equal(0, await RentalCountAsync());
 
         var shortest = await RentAsync(_db.Services, _customer, CarId, startOffset: 0, days: 1);
@@ -66,7 +66,7 @@ public sealed class SqliteBoundaryTests : IAsyncLifetime
     public async Task QuoteForToday_BookedTheNextDay_IsRefusedAndWritesNothing()
     {
         var rentals = _db.Get<IRentalService>();
-        var quote = rentals.Quote(CarId, DailyPrice, Today, 2);
+        var quote = rentals.Quote(CarId, DailyPrice, Today, 2, Today);
 
         _db.Clock.Advance(TimeSpan.FromDays(1));
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => rentals.RentAsync(_customer, quote, Ct));

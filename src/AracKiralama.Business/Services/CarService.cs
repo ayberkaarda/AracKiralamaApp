@@ -52,6 +52,7 @@ internal sealed class CarService(
     ICarRepository cars,
     AccessGuard access,
     TimeProvider timeProvider,
+    IDatabaseClock clock,
     IAuditLog audit,
     IValidator<CarFields> validator) : ICarService
 {
@@ -95,7 +96,7 @@ internal sealed class CarService(
     public async Task<int> AddAsync(UserSession session, CarInput input, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
-        var car = Validate(input, stored: null);
+        var car = Validate(input, stored: null, await MaxYearAsync(cancellationToken).ConfigureAwait(false));
         try
         {
             var id = await access.WriteAsActorAsync(session, () => cars.AddAsync(session.Actor, car, cancellationToken)).ConfigureAwait(false);
@@ -118,7 +119,7 @@ internal sealed class CarService(
             throw BusinessRuleException.Stale(ChangedElsewhere);
         }
 
-        var car = Validate(input, stored);
+        var car = Validate(input, stored, await MaxYearAsync(cancellationToken).ConfigureAwait(false));
         car.Id = carId;
         car.Version = expectedVersion;
 
@@ -165,14 +166,21 @@ internal sealed class CarService(
         new(PlateTaken, new Dictionary<string, string> { [nameof(CarInput.Plate)] = PlateTaken }, cause);
 
     /// <summary>
+    /// The newest model year a car may have: next year by the database's clock, so a computer whose clock is
+    /// wrong neither accepts a car from the future nor refuses next year's model.
+    /// </summary>
+    private async Task<int> MaxYearAsync(CancellationToken cancellationToken) =>
+        (await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false)).Year + 1;
+
+    /// <summary>
     /// Checks every field of <paramref name="input"/> with the validator, which reports one message per
     /// invalid field, as the original form marked each empty field; nothing is stored unless all are
     /// valid. A change of a <paramref name="stored"/> car keeps a gearbox or fuel type of the original
     /// data that is in neither list as long as the form sends it unchanged.
     /// </summary>
-    private Car Validate(CarInput input, Car? stored)
+    private Car Validate(CarInput input, Car? stored, int maxYear)
     {
-        var fields = CarFields.Create(input, timeProvider.Today().Year + 1, stored);
+        var fields = CarFields.Create(input, maxYear, stored);
         var result = validator.Validate(fields);
         if (!result.IsValid)
         {

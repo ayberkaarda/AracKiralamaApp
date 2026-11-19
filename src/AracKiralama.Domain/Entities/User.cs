@@ -39,6 +39,14 @@ public sealed class User
     /// session back. The session that changed its own password moves on to the new value.
     /// </summary>
     public int SessionVersion { get; set; }
+
+    /// <summary>
+    /// Raised by every edit of the account (an admin's change of any field, the account's own password
+    /// change), so an admin's form loaded before another edit cannot write over it, also when the other
+    /// edit only corrected the e-mail address or the phone number. Unlike <see cref="SessionVersion"/> it
+    /// never ends a session.
+    /// </summary>
+    public int EditVersion { get; set; }
 }
 
 /// <summary>What an account may do (column Rol, stored as "Kullanici" or "Admin").</summary>

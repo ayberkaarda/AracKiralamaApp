@@ -7,20 +7,24 @@ public interface IRentalRepository
 {
     /// <summary>
     /// Books a car: under the car's lock, inside the transaction, it checks that the renter's session is
-    /// current, that the car exists, is listed, still costs <see cref="RentalRequest.ExpectedDailyPrice"/>
-    /// a day and that no active rental and no active maintenance record of the car shares a day with
-    /// [<see cref="RentalRequest.StartDate"/>, <see cref="RentalRequest.EndDate"/>), then stores the rental.
+    /// current, that the first day is from today to <see cref="RentalRequest.MaxAdvanceDays"/> days ahead
+    /// (today by the database's clock, read after the lock was granted), that the car exists, is listed,
+    /// still costs <see cref="RentalRequest.ExpectedDailyPrice"/> a day and that no active rental and no
+    /// active maintenance record of the car shares a day with [<see cref="RentalRequest.StartDate"/>,
+    /// <see cref="RentalRequest.EndDate"/>), then stores the rental.
     /// </summary>
     Task<RentResult> RentAsync(RentalRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Ends an active rental on <paramref name="today"/>: one that has not started yet is cancelled,
-    /// one that has is marked returned on that day. Unless <paramref name="actor"/> acts as an admin, a
-    /// rental of another account is treated as missing. The actor's account must exist and, acting as
-    /// an admin, still be an admin at the write.
+    /// Ends an active rental today: one that has not started yet is cancelled, one that has is marked
+    /// returned on that day. Today is the database clock's date, read inside the transaction after the
+    /// car's lock was granted, so the time spent waiting for the lock cannot leave the decision with
+    /// yesterday's date. Unless <paramref name="actor"/> acts as an admin, a rental of another account is
+    /// treated as missing. The actor's account must exist and, acting as an admin, still be an admin at
+    /// the write.
     /// </summary>
     /// <exception cref="ActorRevokedException">The actor's account is gone or no admin (any more); nothing was written.</exception>
-    Task<EndRentalResult> EndAsync(int rentalId, RentalActor actor, DateOnly today, CancellationToken cancellationToken = default);
+    Task<EndRentalResult> EndAsync(int rentalId, RentalActor actor, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Active rentals with car and account, ordered by start day and id; only those of
@@ -49,7 +53,8 @@ public interface IRentalRepository
 
 /// <summary>
 /// A rental to store for account <see cref="UserId"/>, whose session carries <see cref="SessionVersion"/>;
-/// the price was computed from <see cref="ExpectedDailyPrice"/>.
+/// the price was computed from <see cref="ExpectedDailyPrice"/>. It may start at most
+/// <see cref="MaxAdvanceDays"/> days after today (the booking horizon of the settings).
 /// </summary>
 public sealed record RentalRequest(
     int CarId,
@@ -58,7 +63,8 @@ public sealed record RentalRequest(
     DateOnly EndDate,
     decimal ExpectedDailyPrice,
     decimal Price,
-    int SessionVersion);
+    int SessionVersion,
+    int MaxAdvanceDays);
 
 public enum RentOutcome
 {
@@ -76,6 +82,12 @@ public enum RentOutcome
 
     /// <summary>An active maintenance record of the car shares at least one day with the requested range; nothing was written.</summary>
     InMaintenance = 5,
+
+    /// <summary>The first day is before today by the database's clock at the write; nothing was written.</summary>
+    StartInPast = 6,
+
+    /// <summary>The first day is beyond the booking horizon from today by the database's clock at the write; nothing was written.</summary>
+    StartTooFar = 7,
 }
 
 public readonly record struct RentResult(RentOutcome Outcome, int RentalId);

@@ -32,6 +32,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.FailedLoginCount).HasColumnName("BasarisizGiris");
         builder.Property(u => u.LockoutEnd).HasColumnName("KilitBitis");
         builder.Property(u => u.SessionVersion).HasColumnName("OturumSurumu").HasDefaultValue(0);
+        builder.Property(u => u.EditVersion).HasColumnName("DuzenlemeSurumu").HasDefaultValue(0);
 
         builder.HasIndex(u => u.UserName, "IX_Kullanicilar_KullaniciAdi").IsUnique();
         builder.HasIndex(u => u.Email, "IX_Kullanicilar_Eposta").IsUnique().HasFilter(SchemaLimits.EmailFilter);

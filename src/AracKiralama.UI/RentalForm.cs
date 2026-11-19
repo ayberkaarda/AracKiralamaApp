@@ -22,6 +22,7 @@ namespace AracKiralama.UI
         private readonly int _carId;
         private readonly ExclusiveOperation _rent = new();
         private int _days;
+        private DateOnly? _today;
         private bool _quoteRefused;
 
         private readonly VehiclePicture picCar = new() { Name = nameof(picCar), Height = 186 };
@@ -63,10 +64,6 @@ namespace AracKiralama.UI
 
             txtDays.AcceptDigitsOnly();
             var policy = _rentals.Policy;
-            var today = _rentals.Today.ToDateTime(TimeOnly.MinValue);
-            dtpStart.MinDate = today;
-            dtpStart.MaxDate = today.AddDays(policy.MaxAdvanceDays);
-            dtpStart.Value = today;
             _days = policy.MinRentalDays;
             txtDays.Text = _days.ToString(CultureInfo.InvariantCulture);
             btnConfirm.Enabled = false;
@@ -114,11 +111,13 @@ namespace AracKiralama.UI
         {
             var car = await _cars.GetAsync(_session, _carId);
             var booked = await _rentals.GetBookedRangesAsync(_session, _carId);
+            var today = await _rentals.GetTodayAsync(_session);
             if (IsDisposed)
             {
                 return;
             }
 
+            ApplyToday(today);
             Car = car;
             Booked = booked;
             lblCarName.Text = car.Brand + " " + car.Model;
@@ -142,7 +141,7 @@ namespace AracKiralama.UI
         /// </summary>
         internal async Task<bool> RentAsync()
         {
-            if (Car is not { } car)
+            if (Car is not { } car || _today is not { } today)
             {
                 return false;
             }
@@ -153,7 +152,7 @@ namespace AracKiralama.UI
                 _rent,
                 async () =>
                 {
-                    var quote = _rentals.Quote(car.Id, car.DailyPrice, StartDate, _days);
+                    var quote = _rentals.Quote(car.Id, car.DailyPrice, StartDate, _days, today);
                     var question =
                         $"Toplam Tutar: {DisplayFormat.Money(quote.Total)}{(quote.Discounted ? " (uzun kiralama indirimi dahil)" : string.Empty)}\n"
                         + $"Kiralama Başlangıç Tarihi: {DisplayFormat.Date(quote.StartDate)}\n"
@@ -237,14 +236,14 @@ namespace AracKiralama.UI
         /// <summary>The return day and the total of the chosen days; a refused choice says why in the message strip.</summary>
         private void UpdateTotal()
         {
-            if (Car is not { } car)
+            if (Car is not { } car || _today is not { } today)
             {
                 return;
             }
 
             try
             {
-                var quote = _rentals.Quote(car.Id, car.DailyPrice, StartDate, _days);
+                var quote = _rentals.Quote(car.Id, car.DailyPrice, StartDate, _days, today);
                 lblTotal.Text = DisplayFormat.Money(quote.Total);
                 lblReturn.Text = DisplayFormat.Date(quote.EndDate);
                 lblDiscount.Text = quote.Discounted ? "Uzun kiralama indirimi dahil." : string.Empty;
@@ -262,6 +261,25 @@ namespace AracKiralama.UI
                 _quoteRefused = true;
                 ShowStatus(StatusKind.Warning, ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Limits the pick-up day to today (by the database's clock) up to the booking horizon. The first
+        /// load picks today; a later load keeps the chosen day when it is still allowed.
+        /// </summary>
+        private void ApplyToday(DateOnly today)
+        {
+            var first = today.ToDateTime(TimeOnly.MinValue);
+            var last = first.AddDays(_rentals.Policy.MaxAdvanceDays);
+            var chosen = _today is null ? first : dtpStart.Value.Date;
+            _today = today;
+
+            // Widened first, so the new limits can be set in any order.
+            dtpStart.MinDate = DateTimePicker.MinimumDateTime;
+            dtpStart.MaxDate = DateTimePicker.MaximumDateTime;
+            dtpStart.MinDate = first;
+            dtpStart.MaxDate = last;
+            dtpStart.Value = chosen < first ? first : chosen > last ? last : chosen;
         }
 
         /// <summary>Takes the typed number of days, as leaving the days box does.</summary>

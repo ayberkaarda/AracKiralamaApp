@@ -253,5 +253,5 @@ public sealed class CarServiceTests
         Assert.Same(hidden, await Service().GetAsync(Sessions.Admin, 3, Ct));
     }
 
-    private CarService Service() => new(_cars.Object, new AccessGuard(_users.Object, _audit), _time, _audit, TestValidators.Car);
+    private CarService Service() => new(_cars.Object, new AccessGuard(_users.Object, _audit), _time, new TestDatabaseClock(_time), _audit, TestValidators.Car);
 }
