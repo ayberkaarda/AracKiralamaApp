@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <!-- Original artwork, rendered from the SVG sources in assets/. -->
-    <EmbeddedResource Include="..\..\assets\logo.png" Link="Assets\logo.png" LogicalName="AracKiralama.UI.Assets.logo.png" />
+    <EmbeddedResource Include="..\..\assets\logo-256.png" Link="Assets\logo-256.png" LogicalName="AracKiralama.UI.Assets.logo-256.png" />
     <EmbeddedResource Include="..\..\assets\background.png" Link="Assets\background.png" LogicalName="AracKiralama.UI.Assets.background.png" />
     <EmbeddedResource Include="..\..\assets\hero.png" Link="Assets\hero.png" LogicalName="AracKiralama.UI.Assets.hero.png" />
     <EmbeddedResource Include="..\..\assets\car.png" Link="Assets\car.png" LogicalName="AracKiralama.UI.Assets.car.png" />
