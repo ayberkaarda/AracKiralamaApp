@@ -53,6 +53,29 @@ public sealed class OperationsUiTests
         Assert.Equal("Temmuz 2031", Find<Label>(form, "lblMonth").Text);
     });
 
+    /// <summary>Two quick "Sonraki ay" clicks before the first answer arrives ask for two different months; the latest wins.</summary>
+    [Fact]
+    public void Calendar_QuickClicks_AddUpAndTheLatestWins() => Run(() =>
+    {
+        var availability = new ControlledAvailabilityService();
+        using var form = new AvailabilityCalendarForm(availability, Sessions.User, 1, "Anka Kent");
+        _ = form.LoadMonthAsync(March);
+        availability.Requests[0].Answer.SetResult(ControlledAvailabilityService.Calendar(March));
+
+        var first = form.MoveAsync(1);
+        var second = form.MoveAsync(1);
+        availability.Requests[2].Answer.SetResult(ControlledAvailabilityService.Calendar(March.AddMonths(2)));
+        availability.Requests[1].Answer.SetResult(ControlledAvailabilityService.Calendar(March.AddMonths(1)));
+
+        Assert.True(first.IsCompletedSuccessfully && second.IsCompletedSuccessfully);
+        Assert.Equal([March.AddMonths(1), March.AddMonths(2)], availability.Requests.Skip(1).Select(r => r.Month!.Value));
+        Assert.Equal("Mayıs 2026", Find<Label>(form, "lblMonth").Text);
+
+        // A third click counts from the month on the screen.
+        _ = form.MoveAsync(-1);
+        Assert.Equal(March.AddMonths(1), availability.Requests[3].Month);
+    });
+
     /// <summary>The report starts with this month up to today by the database's clock.</summary>
     [Fact]
     public void Report_StartsWithTheRangeTheDatabaseGives() => Run(() =>

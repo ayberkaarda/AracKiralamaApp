@@ -24,6 +24,9 @@ namespace AracKiralama.UI
         private readonly Label[] _cells = new Label[42];
         private DateOnly? _shownMonth;
 
+        /// <summary>The month of the latest request, which quick clicks count from before its answer arrives.</summary>
+        private DateOnly? _requestedMonth;
+
         public AvailabilityCalendarForm(IAvailabilityService availability, UserSession session, int carId, string carTitle)
         {
             ArgumentNullException.ThrowIfNull(availability);
@@ -94,7 +97,23 @@ namespace AracKiralama.UI
         internal async Task LoadMonthAsync(DateOnly? month)
         {
             var request = _loads.Next();
-            var calendar = await _availability.GetCalendarAsync(_session, _carId, month);
+            _requestedMonth = month;
+            CarCalendar calendar;
+            try
+            {
+                calendar = await _availability.GetCalendarAsync(_session, _carId, month);
+            }
+            catch
+            {
+                if (_loads.IsLatest(request))
+                {
+                    // The month asked for was not shown; the next click counts from the one on the screen.
+                    _requestedMonth = _shownMonth;
+                }
+
+                throw;
+            }
+
             if (!_loads.IsLatest(request) || IsDisposed)
             {
                 return;
@@ -126,13 +145,18 @@ namespace AracKiralama.UI
             await this.RunAsync(() => LoadMonthAsync(null));
         }
 
-        /// <summary>Shows the month <paramref name="months"/> away from the one shown; nothing before the first month arrived.</summary>
-        internal Task MoveAsync(int months) => _shownMonth is { } shown ? LoadMonthAsync(shown.AddMonths(months)) : Task.CompletedTask;
+        /// <summary>
+        /// Asks for the month <paramref name="months"/> away from the latest one asked for (or shown), so quick
+        /// clicks add up and the latest wins; nothing before the first month is known.
+        /// </summary>
+        internal Task MoveAsync(int months) =>
+            (_requestedMonth ?? _shownMonth) is { } from ? LoadMonthAsync(from.AddMonths(months)) : Task.CompletedTask;
 
         private void Show(CarCalendar calendar)
         {
             ShownCalendar = calendar;
             _shownMonth = calendar.Month;
+            _requestedMonth = calendar.Month;
             _month.Text = calendar.Month.ToString("MMMM yyyy", DisplayFormat.Turkish);
             var offset = ((int)calendar.Month.DayOfWeek + 6) % 7; // Monday first
             var highContrast = SystemInformation.HighContrast;
