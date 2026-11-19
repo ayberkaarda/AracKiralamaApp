@@ -29,10 +29,11 @@ public sealed record CarCalendar(int CarId, DateOnly Month, DateOnly Today, IRea
 public interface IAvailabilityService
 {
     /// <summary>
-    /// The month of <paramref name="month"/> of the car's calendar, today by the database's clock.
+    /// The month of <paramref name="month"/> of the car's calendar, today by the database's clock; with no
+    /// month, the month of that today, so a workstation whose clock is wrong still opens on the right month.
     /// Customers see only listed cars; an unlisted or missing car gets the same refusal.
     /// </summary>
-    Task<CarCalendar> GetCalendarAsync(UserSession session, int carId, DateOnly month, CancellationToken cancellationToken = default);
+    Task<CarCalendar> GetCalendarAsync(UserSession session, int carId, DateOnly? month, CancellationToken cancellationToken = default);
 }
 
 internal sealed class AvailabilityService(
@@ -48,7 +49,7 @@ internal sealed class AvailabilityService(
     internal const string CarNotFound = "Araç bulunamadı.";
     internal const string MonthOutOfRange = "Takvim bugünden en fazla 10 yıl önce veya sonrası için gösterilebilir.";
 
-    public async Task<CarCalendar> GetCalendarAsync(UserSession session, int carId, DateOnly month, CancellationToken cancellationToken = default)
+    public async Task<CarCalendar> GetCalendarAsync(UserSession session, int carId, DateOnly? month, CancellationToken cancellationToken = default)
     {
         var role = await access.RequireActiveAsync(session, cancellationToken).ConfigureAwait(false);
         var car = await cars.FindAsync(carId, cancellationToken).ConfigureAwait(false);
@@ -58,7 +59,8 @@ internal sealed class AvailabilityService(
         }
 
         var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
-        var first = new DateOnly(month.Year, month.Month, 1);
+        var shown = month ?? today;
+        var first = new DateOnly(shown.Year, shown.Month, 1);
         var away = ((first.Year - today.Year) * 12) + first.Month - today.Month;
         if (Math.Abs(away) > MaxMonthsAway)
         {

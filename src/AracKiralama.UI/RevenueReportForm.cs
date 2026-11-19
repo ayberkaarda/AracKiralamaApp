@@ -97,6 +97,23 @@ namespace AracKiralama.UI
         /// <summary>The report on the screen, which the CSV file contains.</summary>
         internal RevenueReport? ShownReport { get; private set; }
 
+        /// <summary>Puts this month up to today by the database's clock into the range; the pickers start with the computer's.</summary>
+        internal async Task LoadDefaultRangeAsync()
+        {
+            var range = await _reports.GetDefaultRangeAsync(_session);
+            if (!IsDisposed)
+            {
+                _from.Value = range.From.ToDateTime(TimeOnly.MinValue);
+                _to.Value = range.To.ToDateTime(TimeOnly.MinValue);
+            }
+        }
+
+        protected override async void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            await this.RunAsync(LoadDefaultRangeAsync);
+        }
+
         internal void SetRange(DateOnly from, DateOnly to, RevenueGrouping grouping)
         {
             _from.Value = from.ToDateTime(TimeOnly.MinValue);

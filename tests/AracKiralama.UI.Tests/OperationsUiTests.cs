@@ -34,6 +34,37 @@ public sealed class OperationsUiTests
         Assert.Equal("Nisan 2026", Find<Label>(form, "lblMonth").Text);
     });
 
+    /// <summary>The first month comes from the database's today; the computer's clock is not asked, and navigation waits for it.</summary>
+    [Fact]
+    public void Calendar_OpensOnTheMonthTheDatabaseGives() => Run(() =>
+    {
+        var availability = new ControlledAvailabilityService();
+        using var form = new AvailabilityCalendarForm(availability, Sessions.User, 1, "Anka Kent");
+
+        Assert.True(form.MoveAsync(1).IsCompletedSuccessfully);
+        Assert.Empty(availability.Requests);
+
+        _ = form.LoadMonthAsync(null);
+        availability.Requests[0].Answer.SetResult(ControlledAvailabilityService.Calendar(new DateOnly(2031, 7, 1)));
+        _ = form.MoveAsync(1);
+
+        Assert.Null(availability.Requests[0].Month);
+        Assert.Equal(new DateOnly(2031, 8, 1), availability.Requests[1].Month);
+        Assert.Equal("Temmuz 2031", Find<Label>(form, "lblMonth").Text);
+    });
+
+    /// <summary>The report starts with this month up to today by the database's clock.</summary>
+    [Fact]
+    public void Report_StartsWithTheRangeTheDatabaseGives() => Run(() =>
+    {
+        using var form = new RevenueReportForm(new ControlledReportService(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+
+        Assert.True(form.LoadDefaultRangeAsync().IsCompletedSuccessfully);
+
+        Assert.Equal(new DateTime(2027, 5, 1), Find<DateTimePicker>(form, "dtpFrom").Value);
+        Assert.Equal(new DateTime(2027, 5, 10), Find<DateTimePicker>(form, "dtpTo").Value);
+    });
+
     [Fact]
     public void Calendar_EveryDaySaysItsStateInWordsFromMonday() => Run(() =>
     {

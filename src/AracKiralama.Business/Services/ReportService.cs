@@ -34,9 +34,18 @@ public sealed record RevenueReport(
     RevenueLine Total,
     DateTime CreatedAt);
 
+/// <summary>Two days of a report, both included.</summary>
+public readonly record struct ReportRange(DateOnly From, DateOnly To);
+
 /// <summary>The admin's reports.</summary>
 public interface IReportService
 {
+    /// <summary>
+    /// The range the report screen starts with: from the first day of this month to today, by the
+    /// database's clock, so a workstation whose clock is wrong still offers the right days (admin only).
+    /// </summary>
+    Task<ReportRange> GetDefaultRangeAsync(UserSession session, CancellationToken cancellationToken = default);
+
     /// <summary>The revenue between two days, both included (admin only).</summary>
     Task<RevenueReport> GetRevenueAsync(UserSession session, DateOnly firstDay, DateOnly lastDay, RevenueGrouping grouping, CancellationToken cancellationToken = default);
 
@@ -60,6 +69,13 @@ internal sealed class ReportService(
     internal const string DailyRangeTooLong = "Günlük rapor en fazla 366 gün için alınabilir; daha uzun dönemler için aylık raporu seçin.";
 
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
+
+    public async Task<ReportRange> GetDefaultRangeAsync(UserSession session, CancellationToken cancellationToken = default)
+    {
+        await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
+        var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
+        return new ReportRange(new DateOnly(today.Year, today.Month, 1), today);
+    }
 
     public async Task<RevenueReport> GetRevenueAsync(
         UserSession session,

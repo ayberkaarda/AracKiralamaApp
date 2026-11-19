@@ -232,9 +232,9 @@ internal sealed class ControlledContractService : IContractService
 /// <summary>Calendar months answered by the test, in any order.</summary>
 internal sealed class ControlledAvailabilityService : IAvailabilityService
 {
-    public List<(DateOnly Month, TaskCompletionSource<CarCalendar> Answer)> Requests { get; } = [];
+    public List<(DateOnly? Month, TaskCompletionSource<CarCalendar> Answer)> Requests { get; } = [];
 
-    public Task<CarCalendar> GetCalendarAsync(UserSession session, int carId, DateOnly month, CancellationToken cancellationToken = default)
+    public Task<CarCalendar> GetCalendarAsync(UserSession session, int carId, DateOnly? month, CancellationToken cancellationToken = default)
     {
         var answer = new TaskCompletionSource<CarCalendar>();
         Requests.Add((month, answer));
@@ -312,6 +312,11 @@ internal sealed class ControlledMaintenanceService : IMaintenanceService
 internal sealed class ControlledReportService : IReportService
 {
     public List<TaskCompletionSource<RevenueReport>> Requests { get; } = [];
+
+    /// <summary>The range the database's clock gives the report screen.</summary>
+    public ReportRange DefaultRange { get; set; } = new(new DateOnly(2027, 5, 1), new DateOnly(2027, 5, 10));
+
+    public Task<ReportRange> GetDefaultRangeAsync(UserSession session, CancellationToken cancellationToken = default) => Task.FromResult(DefaultRange);
 
     public Task<RevenueReport> GetRevenueAsync(UserSession session, DateOnly firstDay, DateOnly lastDay, RevenueGrouping grouping, CancellationToken cancellationToken = default)
     {

@@ -22,7 +22,7 @@ namespace AracKiralama.UI
         private readonly Label _month;
         private readonly TableLayoutPanel _grid;
         private readonly Label[] _cells = new Label[42];
-        private DateOnly _shownMonth;
+        private DateOnly? _shownMonth;
 
         public AvailabilityCalendarForm(IAvailabilityService availability, UserSession session, int carId, string carTitle)
         {
@@ -32,7 +32,6 @@ namespace AracKiralama.UI
             _availability = availability;
             _session = session;
             _carId = carId;
-            _shownMonth = DateOnly.FromDateTime(DateTime.Today);
 
             Text = "Müsaitlik Takvimi - " + carTitle;
             Icon = AppAssets.Icon;
@@ -48,8 +47,8 @@ namespace AracKiralama.UI
             var previous = new Button { Name = "btnPreviousMonth", Text = "< Önceki ay", AutoSize = true };
             var next = new Button { Name = "btnNextMonth", Text = "Sonraki ay >", AutoSize = true };
             _month = new Label { Name = "lblMonth", AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(12, 0, 12, 0), Font = new Font(Font, FontStyle.Bold) };
-            previous.Click += async (_, _) => await this.RunAsync(() => LoadMonthAsync(_shownMonth.AddMonths(-1)));
-            next.Click += async (_, _) => await this.RunAsync(() => LoadMonthAsync(_shownMonth.AddMonths(1)));
+            previous.Click += async (_, _) => await this.RunAsync(() => MoveAsync(-1));
+            next.Click += async (_, _) => await this.RunAsync(() => MoveAsync(1));
             var bar = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 0, 0, 8) };
             bar.Controls.AddRange([previous, _month, next]);
 
@@ -88,8 +87,11 @@ namespace AracKiralama.UI
 
         internal IReadOnlyList<Label> DayCells => _cells;
 
-        /// <summary>Loads the month of <paramref name="month"/>; only the answer of the latest request is shown.</summary>
-        internal async Task LoadMonthAsync(DateOnly month)
+        /// <summary>
+        /// Loads the month of <paramref name="month"/>, or with none the month of today by the database's clock;
+        /// only the answer of the latest request is shown.
+        /// </summary>
+        internal async Task LoadMonthAsync(DateOnly? month)
         {
             var request = _loads.Next();
             var calendar = await _availability.GetCalendarAsync(_session, _carId, month);
@@ -121,8 +123,11 @@ namespace AracKiralama.UI
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await this.RunAsync(() => LoadMonthAsync(_shownMonth));
+            await this.RunAsync(() => LoadMonthAsync(null));
         }
+
+        /// <summary>Shows the month <paramref name="months"/> away from the one shown; nothing before the first month arrived.</summary>
+        internal Task MoveAsync(int months) => _shownMonth is { } shown ? LoadMonthAsync(shown.AddMonths(months)) : Task.CompletedTask;
 
         private void Show(CarCalendar calendar)
         {

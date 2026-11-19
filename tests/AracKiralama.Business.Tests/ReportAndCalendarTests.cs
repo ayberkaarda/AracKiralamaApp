@@ -17,6 +17,9 @@ public sealed class ReportAndCalendarTests
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 3, 2, 10, 0, 0, TimeSpan.Zero));
     private readonly RecordingAuditLog _audit = new();
 
+    /// <summary>The database's clock, more than a year ahead of the workstation's.</summary>
+    private static FakeTimeProvider DatabaseTime => new(new DateTimeOffset(2027, 5, 10, 9, 0, 0, TimeSpan.Zero));
+
     public ReportAndCalendarTests()
     {
         _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.Admin, 0));
@@ -154,6 +157,30 @@ public sealed class ReportAndCalendarTests
         {
             Assert.Equal(AvailabilityService.MonthOutOfRange, (await Assert.ThrowsAsync<BusinessRuleException>(() => service.GetCalendarAsync(Sessions.User, 1, month, Ct))).Message);
         }
+    }
+
+    /// <summary>On a workstation whose clock is a year behind, the calendar still opens on the database's month.</summary>
+    [Fact]
+    public async Task Calendar_WithoutAMonth_OpensOnTheDatabasesMonth()
+    {
+        var cars = new Mock<ICarRepository>(MockBehavior.Strict);
+        cars.Setup(c => c.FindAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(new Car { Id = 1, IsListed = true });
+        var rentals = new Mock<IRentalRepository>(MockBehavior.Strict);
+        rentals.Setup(r => r.GetBlockedRangesAsync(1, new DateOnly(2027, 5, 1), new DateOnly(2027, 6, 1), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var service = new AvailabilityService(cars.Object, rentals.Object, Guard(), _time, new TestDatabaseClock(DatabaseTime));
+
+        var calendar = await service.GetCalendarAsync(Sessions.User, 1, null, Ct);
+
+        Assert.Equal((new DateOnly(2027, 5, 1), new DateOnly(2027, 5, 10)), (calendar.Month, calendar.Today));
+    }
+
+    [Fact]
+    public async Task Report_DefaultRange_IsThisMonthUpToTodayByTheDatabasesClock()
+    {
+        var reports = new ReportService(_reports.Object, Guard(), _time, new TestDatabaseClock(DatabaseTime), _audit);
+
+        Assert.Equal(new ReportRange(new DateOnly(2027, 5, 1), new DateOnly(2027, 5, 10)), await reports.GetDefaultRangeAsync(Sessions.Admin, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => reports.GetDefaultRangeAsync(Sessions.User, Ct));
     }
 
     [Theory]
