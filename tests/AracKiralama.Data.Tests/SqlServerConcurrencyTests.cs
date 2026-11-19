@@ -462,6 +462,59 @@ public sealed class SqlServerConcurrencyTests
         Assert.Equal(0, await ActiveAsync(database, carId));
     }
 
+    /// <summary>
+    /// A transaction chosen as a deadlock victim (error 1205) wrote nothing and can be tried again; it is
+    /// recognised so the screen answers with the busy message instead of a database failure.
+    /// </summary>
+    [Fact]
+    public async Task DeadlockVictim_IsRecognised()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var admin = await SetUpAdminAsync(a);
+        var customer = await RegisterAsync(a, "kilit", 1);
+
+        await using var first = new SqlConnection(database.ConnectionString);
+        await using var second = new SqlConnection(database.ConnectionString);
+        await first.OpenAsync(Ct);
+        await second.OpenAsync(Ct);
+        await using var firstTransaction = (SqlTransaction)await first.BeginTransactionAsync(Ct);
+        await using var secondTransaction = (SqlTransaction)await second.BeginTransactionAsync(Ct);
+        await TouchAsync(first, firstTransaction, admin.UserId);
+        await TouchAsync(second, secondTransaction, customer.UserId);
+
+        // Each waits for the row the other holds: SQL Server ends one of them with error 1205.
+        var results = await Task.WhenAll(
+            CaptureAsync(() => TouchAsync(first, firstTransaction, customer.UserId)),
+            CaptureAsync(() => TouchAsync(second, secondTransaction, admin.UserId)));
+
+        var victim = Assert.Single(results, r => r is not null);
+        Assert.True(DatabaseErrors.IsDeadlock(victim));
+        Assert.True(DatabaseErrors.IsDeadlock(new InvalidOperationException("wrapped", victim)));
+        Assert.False(DatabaseErrors.IsDeadlock(new TimeoutException()));
+
+        static async Task TouchAsync(SqlConnection connection, SqlTransaction transaction, int id)
+        {
+            await using var command = new SqlCommand("UPDATE dbo.Kullanicilar SET Telefon = Telefon WHERE KullaniciID = @id;", connection, transaction);
+            command.Parameters.AddWithValue("@id", id);
+            await command.ExecuteNonQueryAsync(Ct);
+        }
+
+        static async Task<Exception?> CaptureAsync(Func<Task> operation)
+        {
+            try
+            {
+                await Task.Run(operation, Ct);
+                return null;
+            }
+            catch (SqlException ex)
+            {
+                return ex;
+            }
+        }
+    }
+
     private static string Plate(string letters, int round) => "00 " + letters + " " + round.ToString("00", CultureInfo.InvariantCulture);
 
     private static Task<int> ActiveAsync(SqlServerTestDatabase database, int carId) =>
