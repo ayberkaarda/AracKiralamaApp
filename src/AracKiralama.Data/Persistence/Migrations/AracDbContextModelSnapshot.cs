@@ -249,6 +249,12 @@ namespace AracKiralama.Data.Persistence.Migrations
                         .HasColumnType("nvarchar(20)")
                         .HasColumnName("Rol");
 
+                    b.Property<int>("SessionVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("OturumSurumu");
+
                     b.Property<string>("UserName")
                         .IsRequired()
                         .HasMaxLength(50)

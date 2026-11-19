@@ -80,6 +80,10 @@ public sealed class LegacyUpgradeTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
+    /// <summary>Every migration of the application; an upgraded database has applied each of them once.</summary>
+    private static int MigrationCount { get; } = typeof(AracDbContext).Assembly.GetTypes()
+        .Count(t => t.IsDefined(typeof(Microsoft.EntityFrameworkCore.Migrations.MigrationAttribute), inherit: false));
+
     [Fact]
     public async Task Initialize_LegacyDatabase_KeepsTheRowsAndTurnsThemIntoTheNewModel()
     {
@@ -207,7 +211,7 @@ public sealed class LegacyUpgradeTests
             Task.Run(() => a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct),
             Task.Run(() => b.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct), Ct));
 
-        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
+        Assert.Equal(MigrationCount, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.__EFMigrationsHistory", Ct));
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kiralama", Ct));
         Assert.Equal(2, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Araclar WHERE KiralamayaAcik = 0", Ct));
     }
