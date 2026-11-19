@@ -10,7 +10,8 @@ namespace AracKiralama.UI.Infrastructure;
 /// it is treated as untrusted: only absolute http and https addresses without user information are
 /// fetched, only from public internet addresses (the connection itself checks the resolved address, so a
 /// name that points to this computer, the local network or a link-local address is refused, also after a
-/// DNS change), without redirects or proxies, with a time limit and a size limit. Anything else, and
+/// DNS change), without redirects or proxies, with a time limit, a download size limit and a picture
+/// size limit checked before decoding, and only a few at a time. Anything else, and
 /// every failure, shows the application's own placeholder. Per picture box only the latest request is
 /// applied, so a slow answer never replaces the picture of a car chosen later.
 /// </summary>
@@ -22,11 +23,23 @@ internal static class CarPictures
     /// <summary>Largest width or height that is decoded.</summary>
     public const int MaxDimension = 4096;
 
+    /// <summary>Largest number of pixels that is decoded (16 megapixels, 64 MB as 32-bit colour).</summary>
+    public const long MaxPixels = 16L * 1024 * 1024;
+
+    /// <summary>Pictures downloaded and decoded at the same time; the others wait for a free place.</summary>
+    public const int MaxConcurrentLoads = 3;
+
+    internal const string TooLarge = "The picture's dimensions are too large.";
+
+    internal const string NotAPicture = "Not an acceptable picture.";
+
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     private static readonly ConditionalWeakTable<PictureBox, RequestSequence> Sequences = new();
 
     private static readonly Lazy<HttpClient> Client = new(CreateClient);
+
+    private static readonly SemaphoreSlim Loads = new(MaxConcurrentLoads, MaxConcurrentLoads);
 
     /// <summary>
     /// Shows the placeholder at once and, for an acceptable address, replaces it with the downloaded
@@ -133,7 +146,61 @@ internal static class CarPictures
         Replace(pictureBox, image);
     }
 
-    private static async Task<Image> DownloadAsync(Uri uri)
+    private static Task<Image> DownloadAsync(Uri uri) => LoadThrottledAsync(() => FetchAsync(uri));
+
+    /// <summary>
+    /// Fetches the bytes of a picture with <paramref name="fetch"/> and decodes them, with at most
+    /// <see cref="MaxConcurrentLoads"/> loads at a time: a catalog full of cards that share one address
+    /// downloads and opens a few pictures at once, not all of them.
+    /// </summary>
+    internal static async Task<Image> LoadThrottledAsync(Func<Task<byte[]>> fetch)
+    {
+        ArgumentNullException.ThrowIfNull(fetch);
+
+        await Loads.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var data = await fetch().ConfigureAwait(false);
+            return Decode(data);
+        }
+        finally
+        {
+            Loads.Release();
+        }
+    }
+
+    /// <summary>
+    /// Decodes a downloaded picture. Its width and height are read from the file's header first, without
+    /// decoding anything, and a picture of an unknown format or larger than <see cref="MaxDimension"/>
+    /// or <see cref="MaxPixels"/> is refused before it is opened: a small file can declare a picture that
+    /// needs gigabytes once decoded.
+    /// </summary>
+    internal static Image Decode(byte[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+
+        if (!PictureHeader.TryReadSize(data, out var width, out var height) || width <= 0 || height <= 0)
+        {
+            throw new InvalidDataException(NotAPicture);
+        }
+
+        if (width > MaxDimension || height > MaxDimension || (long)width * height > MaxPixels)
+        {
+            throw new InvalidDataException(TooLarge);
+        }
+
+        using var buffer = new MemoryStream(data, writable: false);
+        using var decoded = Image.FromStream(buffer, useEmbeddedColorManagement: false, validateImageData: true);
+        if (decoded.Width > MaxDimension || decoded.Height > MaxDimension)
+        {
+            throw new InvalidDataException(TooLarge);
+        }
+
+        // A copy detaches the image from the stream.
+        return new Bitmap(decoded);
+    }
+
+    private static async Task<byte[]> FetchAsync(Uri uri)
     {
         using var timeout = new CancellationTokenSource(Timeout);
         using var response = await Client.Value.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
@@ -141,35 +208,24 @@ internal static class CarPictures
         if (response.Content.Headers.ContentType?.MediaType is not { } type || !type.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
             || response.Content.Headers.ContentLength > MaxBytes)
         {
-            throw new InvalidDataException("Not an acceptable picture.");
+            throw new InvalidDataException(NotAPicture);
         }
 
         await using var source = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
-        var buffer = new MemoryStream();
-        await using (buffer.ConfigureAwait(false))
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81_920];
+        int read;
+        while ((read = await source.ReadAsync(chunk, timeout.Token).ConfigureAwait(false)) > 0)
         {
-            var chunk = new byte[81_920];
-            int read;
-            while ((read = await source.ReadAsync(chunk, timeout.Token).ConfigureAwait(false)) > 0)
-            {
-                if (buffer.Length + read > MaxBytes)
-                {
-                    throw new InvalidDataException("The picture is too large.");
-                }
-
-                buffer.Write(chunk, 0, read);
-            }
-
-            buffer.Position = 0;
-            using var decoded = Image.FromStream(buffer, useEmbeddedColorManagement: false, validateImageData: true);
-            if (decoded.Width > MaxDimension || decoded.Height > MaxDimension)
+            if (buffer.Length + read > MaxBytes)
             {
                 throw new InvalidDataException("The picture is too large.");
             }
 
-            // A copy detaches the image from the stream.
-            return new Bitmap(decoded);
+            buffer.Write(chunk, 0, read);
         }
+
+        return buffer.ToArray();
     }
 
     private static void Replace(PictureBox pictureBox, Image image)

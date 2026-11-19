@@ -113,4 +113,110 @@ public sealed class BrandingTests
     {
         Assert.Equal(expected, CarPictures.IsPublicAddress(IPAddress.Parse(address)));
     }
+
+    /// <summary>
+    /// A picture of 30000 x 30000 pixels compresses to far less than the download limit but would need
+    /// about 3.6 GB once opened. Its size is read from the header and it is refused before anything is
+    /// decoded, as is any picture wider or taller than the limit.
+    /// </summary>
+    [Fact]
+    public void CarPicture_OversizedDimensions_AreRefusedBeforeDecoding()
+    {
+        var bomb = PictureFiles.Png(30_000, 30_000);
+        Assert.True(bomb.Length < CarPictures.MaxBytes, "The test picture must fit the download limit.");
+
+        // Header-only files: nothing after the size could be decoded, so only the header can refuse them.
+        Assert.Equal(CarPictures.TooLarge, Assert.Throws<InvalidDataException>(() => CarPictures.Decode(PictureFiles.HeaderOnlyGif(20_000, 20_000))).Message);
+        Assert.Equal(CarPictures.TooLarge, Assert.Throws<InvalidDataException>(() => CarPictures.Decode(PictureFiles.HeaderOnlyBmp(20_000, -20_000))).Message);
+        Assert.Equal(CarPictures.TooLarge, Assert.Throws<InvalidDataException>(() => CarPictures.Decode(PictureFiles.HeaderOnlyJpeg(20_000, 20_000))).Message);
+        Assert.Equal(CarPictures.TooLarge, Assert.Throws<InvalidDataException>(() => CarPictures.Decode(PictureFiles.Png(CarPictures.MaxDimension + 1, 1))).Message);
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(CarPictures.TooLarge, Assert.Throws<InvalidDataException>(() => CarPictures.Decode(bomb)).Message);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(1), "Refusing by the header must not decode the picture.");
+    }
+
+    [Fact]
+    public void CarPicture_UnknownOrBrokenFormat_IsRefused()
+    {
+        byte[][] refused =
+        [
+            [],
+            [0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00], // TIFF
+            [0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x10, 0x10], // ICO
+            [0x89, 0x50, 0x4E, 0x47], // PNG signature only
+            [0xFF, 0xD8, 0xFF, 0xD9], // JPEG without a frame
+        ];
+
+        Assert.All(refused, data => Assert.Equal(CarPictures.NotAPicture, Assert.Throws<InvalidDataException>(() => CarPictures.Decode(data)).Message));
+    }
+
+    [Theory]
+    [InlineData("Png")]
+    [InlineData("Jpeg")]
+    [InlineData("Gif")]
+    [InlineData("Bmp")]
+    public void CarPicture_UsualFormatWithinTheLimits_IsDecoded(string format)
+    {
+        using var original = new Bitmap(40, 30);
+        using var saved = new MemoryStream();
+        original.Save(saved, format switch
+        {
+            "Png" => System.Drawing.Imaging.ImageFormat.Png,
+            "Jpeg" => System.Drawing.Imaging.ImageFormat.Jpeg,
+            "Gif" => System.Drawing.Imaging.ImageFormat.Gif,
+            _ => System.Drawing.Imaging.ImageFormat.Bmp,
+        });
+
+        using var decoded = CarPictures.Decode(saved.ToArray());
+
+        Assert.Equal(new Size(40, 30), decoded.Size);
+    }
+
+    /// <summary>
+    /// The catalog asks for every car's picture at once; only <see cref="CarPictures.MaxConcurrentLoads"/>
+    /// downloads (and the decoding after them) run at the same time.
+    /// </summary>
+    [Fact]
+    public async Task CarPicture_ConcurrentLoads_AreLimited()
+    {
+        var running = 0;
+        var most = 0;
+        var answers = Enumerable.Range(0, 8).Select(_ => new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously)).ToList();
+        var loads = answers.Select(answer => CarPictures.LoadThrottledAsync(async () =>
+        {
+            var now = Interlocked.Increment(ref running);
+            InterlockedMax(ref most, now);
+            try
+            {
+                return await answer.Task;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref running);
+            }
+        })).ToList();
+
+        Assert.Equal(CarPictures.MaxConcurrentLoads, Volatile.Read(ref running));
+        foreach (var answer in answers)
+        {
+            answer.SetResult([0x00]);
+        }
+
+        foreach (var load in loads)
+        {
+            await Assert.ThrowsAsync<InvalidDataException>(() => load);
+        }
+
+        Assert.Equal(CarPictures.MaxConcurrentLoads, most);
+        Assert.Equal(0, running);
+    }
+
+    private static void InterlockedMax(ref int target, int value)
+    {
+        int current;
+        while ((current = Volatile.Read(ref target)) < value && Interlocked.CompareExchange(ref target, value, current) != current)
+        {
+        }
+    }
 }
