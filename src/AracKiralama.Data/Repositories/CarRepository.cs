@@ -42,16 +42,21 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
         return await db.Cars.AsNoTracking().SingleOrDefaultAsync(c => c.Id == carId, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<int> AddAsync(Car car, CancellationToken cancellationToken = default)
+    public async Task<int> AddAsync(int adminId, Car car, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(car);
 
-        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var entity = Copy(car);
-        db.Cars.Add(entity);
         try
         {
+            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
+
+            var entity = Copy(car);
+            db.Cars.Add(entity);
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return entity.Id;
         }
         catch (DbUpdateException ex)
         {
@@ -60,11 +65,9 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
             await ThrowIfPlateTakenAsync(car.Plate, null, ex).ConfigureAwait(false);
             throw;
         }
-
-        return entity.Id;
     }
 
-    public async Task<CarUpdateOutcome> UpdateAsync(Car car, CancellationToken cancellationToken = default)
+    public async Task<CarUpdateOutcome> UpdateAsync(int adminId, Car car, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(car);
 
@@ -76,6 +79,7 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
             // A booking of this car checks the daily price under the same lock, so it sees either the old
             // price (and commits first) or the new one (and is refused as changed).
             await Locks.CarAsync(db, car.Id, cancellationToken).ConfigureAwait(false);
+            await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
 
             var stored = await db.Cars.SingleOrDefaultAsync(c => c.Id == car.Id, cancellationToken).ConfigureAwait(false);
             if (stored is null)
@@ -106,11 +110,12 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
         }
     }
 
-    public async Task<CarDeleteOutcome> DeleteAsync(int carId, CancellationToken cancellationToken = default)
+    public async Task<CarDeleteOutcome> DeleteAsync(int adminId, int carId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await Locks.CarAsync(db, carId, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
 
         if (!await db.Cars.AnyAsync(c => c.Id == carId, cancellationToken).ConfigureAwait(false))
         {

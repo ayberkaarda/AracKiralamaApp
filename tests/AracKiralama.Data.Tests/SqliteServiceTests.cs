@@ -2,6 +2,7 @@ using AracKiralama.Business;
 using AracKiralama.Business.Services;
 using AracKiralama.Data.Persistence;
 using AracKiralama.Domain.Entities;
+using AracKiralama.Domain.Repositories;
 using Microsoft.EntityFrameworkCore;
 using static AracKiralama.Data.Tests.TestServices;
 
@@ -215,6 +216,47 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.UpdateAsync(secondSession, second, new AccountInput("ikinci", null, null, null, UserRole.Admin), Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.GetAllAsync(secondSession, Ct));
         Assert.Equal(UserRole.User, (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == second).Role);
+    }
+
+    /// <summary>
+    /// Every repository write checks the acting account itself, whatever the service checked before:
+    /// a customer's id acting as an admin, or an account that does not exist, is refused and nothing is
+    /// written.
+    /// </summary>
+    [Fact]
+    public async Task Repositories_RefuseAnActorWithoutTheRoleAndWriteNothing()
+    {
+        var users = _db.Get<IUserRepository>();
+        var cars = _db.Get<ICarRepository>();
+        var rentals = _db.Get<IRentalRepository>();
+        var receipt = await RentAsync(_db.Services, _customer, CarId, startOffset: 1);
+        var customer = _customer.UserId;
+        var car = (await cars.FindAsync(CarId, Ct))!;
+        car.DailyPrice = 1m;
+        var newcomer = new User { UserName = "yeni", PasswordHash = "x", Role = UserRole.Admin };
+        List<Func<Task>> refused =
+        [
+            () => users.AddAsync(newcomer, customer, Ct),
+            () => users.UpdateAsync(customer, new AccountUpdate(customer, "ornek", null, null, UserRole.Admin, null), Ct),
+            () => users.DeleteAsync(customer, _admin.UserId, Ct),
+            () => cars.AddAsync(customer, new Car { Brand = "A", Model = "B", Year = 2020, Transmission = "Manuel", FuelType = "Benzin", Color = "Gri", Plate = "00 YOK 01", DailyPrice = 1m }, Ct),
+            () => cars.UpdateAsync(customer, car, Ct),
+            () => cars.DeleteAsync(customer, OtherCarId, Ct),
+            () => rentals.EndAsync(receipt.RentalId, new RentalActor(customer, AsAdmin: true), Today, Ct),
+            () => rentals.EndAsync(receipt.RentalId, new RentalActor(999, AsAdmin: false), Today, Ct),
+        ];
+
+        foreach (var operation in refused)
+        {
+            await Assert.ThrowsAsync<ActorRevokedException>(operation);
+        }
+
+        await using var db = _db.CreateContext();
+        Assert.Equal(2, await db.Users.CountAsync(Ct));
+        Assert.Equal(UserRole.User, await db.Users.Where(u => u.Id == customer).Select(u => u.Role).SingleAsync(Ct));
+        Assert.Equal(5, await db.Cars.CountAsync(Ct));
+        Assert.Equal(850m, await db.Cars.Where(c => c.Id == CarId).Select(c => c.DailyPrice).SingleAsync(Ct));
+        Assert.Equal(1, await ActiveAsync(CarId));
     }
 
     [Fact]

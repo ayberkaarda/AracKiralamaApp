@@ -190,8 +190,10 @@ internal sealed class RentalService(
         ArgumentNullException.ThrowIfNull(session);
 
         // The owner filter comes from the role stored now: a demoted admin ends only their own rentals.
+        // The repository checks the role again inside the write.
         var owner = await access.OwnerFilterAsync(session, cancellationToken).ConfigureAwait(false);
-        var result = await rentals.EndAsync(rentalId, owner, timeProvider.Today(), cancellationToken).ConfigureAwait(false);
+        var actor = new RentalActor(session.UserId, AsAdmin: owner is null);
+        var result = await access.WriteAsActorAsync(session, () => rentals.EndAsync(rentalId, actor, timeProvider.Today(), cancellationToken)).ConfigureAwait(false);
         if (result.Outcome == EndRentalOutcome.NotFound)
         {
             throw new BusinessRuleException(RentalNotFound);

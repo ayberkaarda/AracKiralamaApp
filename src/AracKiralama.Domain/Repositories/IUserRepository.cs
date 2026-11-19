@@ -22,20 +22,32 @@ public interface IUserRepository
     /// <summary>Which of the given values another account (not <paramref name="exceptUserId"/>) already uses.</summary>
     Task<AccountFields> FindTakenAsync(string userName, string? email, string? phone, int? exceptUserId = null, CancellationToken cancellationToken = default);
 
-    /// <summary>Stores a new account and returns its id.</summary>
+    /// <summary>
+    /// Stores a new account and returns its id. An account added by an admin names that admin in
+    /// <paramref name="adminId"/>, who must still be an admin at the write; a sign-up passes
+    /// <see langword="null"/>.
+    /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    Task<int> AddAsync(User user, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
+    Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes an account's name, contact data and role and, when <see cref="AccountUpdate.NewPasswordHash"/>
     /// is set, its password. The last admin cannot lose the admin role: the check and the write are one
-    /// conditional UPDATE, so two concurrent demotions cannot both succeed.
+    /// conditional UPDATE, so two concurrent demotions cannot both succeed. Account
+    /// <paramref name="adminId"/>, the admin making the change, must still be an admin at the write,
+    /// decided under the lock every role change takes.
     /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    Task<AccountUpdateOutcome> UpdateAsync(AccountUpdate update, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
+    Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes an account that is no admin and has no rentals, in one conditional DELETE.</summary>
-    Task<AccountDeleteOutcome> DeleteAsync(int userId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Deletes an account that is no admin and has no rentals, in one conditional DELETE, while account
+    /// <paramref name="adminId"/> is still an admin.
+    /// </summary>
+    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
+    Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replaces the password of <paramref name="verified"/> with <paramref name="newPasswordHash"/>, only

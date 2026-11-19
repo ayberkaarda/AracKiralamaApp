@@ -80,8 +80,8 @@ public sealed class CarServiceTests
     public async Task Add_StoresTheParsedCarWithANormalizedPlate()
     {
         Car? stored = null;
-        _cars.Setup(c => c.AddAsync(It.IsAny<Car>(), It.IsAny<CancellationToken>()))
-            .Callback<Car, CancellationToken>((car, _) => stored = car)
+        _cars.Setup(c => c.AddAsync(Sessions.Admin.UserId, It.IsAny<Car>(), It.IsAny<CancellationToken>()))
+            .Callback<int, Car, CancellationToken>((_, car, _) => stored = car)
             .ReturnsAsync(4);
 
         var id = await Service().AddAsync(Sessions.Admin, Valid with { Brand = "  Anka  " }, Ct);
@@ -153,7 +153,7 @@ public sealed class CarServiceTests
     [Fact]
     public async Task Add_TakenPlate_IsReportedOnThePlateField()
     {
-        _cars.Setup(c => c.AddAsync(It.IsAny<Car>(), It.IsAny<CancellationToken>())).ThrowsAsync(new DuplicatePlateException());
+        _cars.Setup(c => c.AddAsync(Sessions.Admin.UserId, It.IsAny<Car>(), It.IsAny<CancellationToken>())).ThrowsAsync(new DuplicatePlateException());
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().AddAsync(Sessions.Admin, Valid, Ct));
 
@@ -165,7 +165,7 @@ public sealed class CarServiceTests
     [Fact]
     public async Task Delete_CarWithRentals_IsRefused()
     {
-        _cars.Setup(c => c.DeleteAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync(CarDeleteOutcome.HasRentals);
+        _cars.Setup(c => c.DeleteAsync(Sessions.Admin.UserId, 3, It.IsAny<CancellationToken>())).ReturnsAsync(CarDeleteOutcome.HasRentals);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().DeleteAsync(Sessions.Admin, 3, Ct));
 

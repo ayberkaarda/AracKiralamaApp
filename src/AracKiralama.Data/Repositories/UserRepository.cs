@@ -86,38 +86,46 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         return taken;
     }
 
-    public async Task<int> AddAsync(User user, CancellationToken cancellationToken = default)
+    public async Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var entity = new User
-        {
-            UserName = user.UserName,
-            PasswordHash = user.PasswordHash,
-            PasswordFormat = user.PasswordFormat,
-            Role = user.Role,
-            Email = user.Email,
-            Phone = user.Phone,
-        };
-        db.Users.Add(entity);
-
         try
         {
+            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            if (adminId is { } admin)
+            {
+                // Under the lock every role change takes, so an admin demoted concurrently has lost the
+                // role here already and cannot add another admin.
+                await Locks.AdminRolesAsync(db, cancellationToken).ConfigureAwait(false);
+                await Actors.RequireAsync(db, admin, admin: true, cancellationToken).ConfigureAwait(false);
+            }
+
+            var entity = new User
+            {
+                UserName = user.UserName,
+                PasswordHash = user.PasswordHash,
+                PasswordFormat = user.PasswordFormat,
+                Role = user.Role,
+                Email = user.Email,
+                Phone = user.Phone,
+            };
+            db.Users.Add(entity);
             await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return entity.Id;
         }
         catch (DbUpdateException ex)
         {
-            // A unique index rejected a value registered concurrently. Checked with a new query so the
-            // provider specific error code does not matter.
+            // A unique index rejected a value registered concurrently. Checked with a new query, after the
+            // transaction has ended, so the provider specific error code does not matter.
             await ThrowIfTakenAsync(user.UserName, user.Email, user.Phone, null, ex).ConfigureAwait(false);
             throw;
         }
-
-        return entity.Id;
     }
 
-    public async Task<AccountUpdateOutcome> UpdateAsync(AccountUpdate update, CancellationToken cancellationToken = default)
+    public async Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(update);
 
@@ -126,6 +134,10 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
             await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             await Locks.AdminRolesAsync(db, cancellationToken).ConfigureAwait(false);
+
+            // Decided under the lock that every role change takes: an admin demoted concurrently has lost
+            // the role here already, so it can neither change accounts nor give the role to anyone.
+            await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
 
             var id = update.UserId;
             var keepsAdmin = update.Role == UserRole.Admin;
@@ -176,9 +188,11 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         }
     }
 
-    public async Task<AccountDeleteOutcome> DeleteAsync(int userId, CancellationToken cancellationToken = default)
+    public async Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, adminId, admin: true, cancellationToken).ConfigureAwait(false);
 
         // One statement decides: no admin, no rental history.
         var deleted = await db.Users
@@ -187,6 +201,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
             .ConfigureAwait(false);
         if (deleted == 1)
         {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             return AccountDeleteOutcome.Deleted;
         }
 

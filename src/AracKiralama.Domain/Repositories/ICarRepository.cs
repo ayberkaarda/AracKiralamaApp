@@ -16,16 +16,21 @@ public interface ICarRepository
 
     Task<Car?> FindAsync(int carId, CancellationToken cancellationToken = default);
 
+    // Every write names the admin making it; that account must still be an admin at the write.
+
     /// <summary>Stores a new car and returns its id.</summary>
     /// <exception cref="DuplicatePlateException">Another car has the plate.</exception>
-    Task<int> AddAsync(Car car, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
+    Task<int> AddAsync(int adminId, Car car, CancellationToken cancellationToken = default);
 
     /// <summary>Changes a car's details under the car's lock.</summary>
     /// <exception cref="DuplicatePlateException">Another car has the plate.</exception>
-    Task<CarUpdateOutcome> UpdateAsync(Car car, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
+    Task<CarUpdateOutcome> UpdateAsync(int adminId, Car car, CancellationToken cancellationToken = default);
 
     /// <summary>Deletes a car that has never been rented, under the car's lock.</summary>
-    Task<CarDeleteOutcome> DeleteAsync(int carId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
+    Task<CarDeleteOutcome> DeleteAsync(int adminId, int carId, CancellationToken cancellationToken = default);
 }
 
 public enum CarUpdateOutcome

@@ -80,9 +80,14 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         }
     }
 
-    public async Task<EndRentalResult> EndAsync(int rentalId, int? ownerId, DateOnly today, CancellationToken cancellationToken = default)
+    public async Task<EndRentalResult> EndAsync(int rentalId, RentalActor actor, DateOnly today, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        // Checked first, so an account that lost the admin role learns nothing about other accounts' rentals.
+        await Actors.RequireAsync(db, actor.UserId, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
+        int? ownerId = actor.AsAdmin ? null : actor.UserId;
 
         // The car decides which lock to take; a rental of another account is the same as none.
         var carId = await Owned(db.Rentals.AsNoTracking(), ownerId)
@@ -95,7 +100,6 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
             return new EndRentalResult(EndRentalOutcome.NotFound);
         }
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await Locks.CarAsync(db, carId.Value, cancellationToken).ConfigureAwait(false);
 
         // Read again under the lock: a concurrent end of the same rental has finished by now.

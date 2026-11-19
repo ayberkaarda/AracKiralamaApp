@@ -4,6 +4,7 @@ using AracKiralama.Business.Services;
 using AracKiralama.Data.Persistence;
 using AracKiralama.Domain.Entities;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static AracKiralama.Data.Tests.TestServices;
 
@@ -178,6 +179,61 @@ public sealed class SqlServerConcurrencyTests
         Assert.Single(results, r => r is null);
         Assert.Contains(results, r => r is BusinessRuleException { Message: AccountService.LastAdmin } or AccessDeniedException);
         Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct));
+    }
+
+    /// <summary>
+    /// Admin B has passed the service's role check and is about to promote a customer when the founder
+    /// demotes B. The role is checked again inside B's write, so B's promotion is refused and the
+    /// customer stays a customer.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccount_ByAnAdminDemotedMeanwhile_IsRefused()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var founder = await SetUpAdminAsync(a);
+        var accounts = a.GetRequiredService<IAccountService>();
+        var b = await accounts.AddAsync(founder, new AccountInput("badmin", Password, null, null, UserRole.Admin), Ct);
+        var bSession = await a.GetRequiredService<IAuthService>().SignInAsync("badmin", Password, Ct);
+        var customer = await RegisterAsync(a, "uye", 1);
+        var gate = CommandGate.BeforeAppLock("AracKiralama.AdminRoles");
+        await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var promoting = bApp.GetRequiredService<IAccountService>().UpdateAsync(
+            bSession, customer.UserId, new AccountInput("uye", null, "uye@example.com", "5540000001", UserRole.Admin), Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        gate.Release();
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => promoting);
+        Assert.Equal(1, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE Rol = N'Admin'", Ct));
+        Assert.Equal(0, await database.ScalarAsync("SELECT COUNT(*) FROM dbo.Kullanicilar WHERE KullaniciAdi = N'uye' AND Rol = N'Admin'", Ct));
+    }
+
+    /// <summary>The same for a car: an admin demoted while the change waits for the car's lock changes nothing.</summary>
+    [Fact]
+    public async Task UpdateCar_ByAnAdminDemotedMeanwhile_IsRefused()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var founder = await SetUpAdminAsync(a);
+        var accounts = a.GetRequiredService<IAccountService>();
+        var b = await accounts.AddAsync(founder, new AccountInput("badmin", Password, null, null, UserRole.Admin), Ct);
+        var bSession = await a.GetRequiredService<IAuthService>().SignInAsync("badmin", Password, Ct);
+        var carId = await AddCarAsync(a, founder, "00 DMT 01");
+        var gate = CommandGate.BeforeAppLock("AracKiralama.Car." + carId.ToString(CultureInfo.InvariantCulture));
+        await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var changing = bApp.GetRequiredService<ICarService>().UpdateAsync(
+            bSession, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 DMT 01", "1", null, true), Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        gate.Release();
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => changing);
+        Assert.Equal(100, await database.ScalarAsync("SELECT CAST(GunlukUcret AS int) FROM dbo.Araclar WHERE AracID = @id", Ct, ("@id", carId)));
     }
 
     private static string Plate(string letters, int round) => "00 " + letters + " " + round.ToString("00", CultureInfo.InvariantCulture);

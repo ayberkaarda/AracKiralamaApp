@@ -49,6 +49,27 @@ internal sealed class AccessGuard(IUserRepository users, IAuditLog audit)
     }
 
     /// <summary>
+    /// Runs a repository write that checks the session's account again inside the write. When the
+    /// account was deleted or lost the needed role after the check at the start of the operation, the
+    /// repository wrote nothing; the refusal is recorded and reported like any other denied access.
+    /// </summary>
+    public async Task<T> WriteAsActorAsync<T>(UserSession session, Func<Task<T>> write)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(write);
+
+        try
+        {
+            return await write().ConfigureAwait(false);
+        }
+        catch (ActorRevokedException ex)
+        {
+            audit.Record(AuditEvent.AccessDenied, AuditCodes.Of(session.Role));
+            throw new AccessDeniedException(AccessDeniedException.DefaultMessage, ex);
+        }
+    }
+
+    /// <summary>
     /// The account whose rentals the session may see and end: its own id, or <see langword="null"/>
     /// (everyone) when the account is an admin in the database now.
     /// </summary>

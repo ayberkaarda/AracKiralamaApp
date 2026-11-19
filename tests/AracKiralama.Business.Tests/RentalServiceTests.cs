@@ -124,7 +124,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task End_ByAUser_IsLimitedToTheirOwnRentals()
     {
-        _rentals.Setup(r => r.EndAsync(9, Sessions.User.UserId, Today, It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.User.UserId, AsAdmin: false), Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.NotFound));
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().EndAsync(Sessions.User, 9, Ct));
@@ -136,7 +136,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task End_ByAnAdmin_HasNoOwnerFilter()
     {
-        _rentals.Setup(r => r.EndAsync(9, null, Today, It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: true), Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.Returned));
 
         Assert.Equal(RentalEnding.Returned, await Service().EndAsync(Sessions.Admin, 9, Ct));
@@ -148,12 +148,12 @@ public sealed class RentalServiceTests
     public async Task End_ByADemotedAdmin_IsLimitedToTheirOwnRentals()
     {
         _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.User);
-        _rentals.Setup(r => r.EndAsync(9, Sessions.Admin.UserId, Today, It.IsAny<CancellationToken>()))
+        _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: false), Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.NotFound));
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => Service().EndAsync(Sessions.Admin, 9, Ct));
 
-        _rentals.Verify(r => r.EndAsync(9, Sessions.Admin.UserId, Today, It.IsAny<CancellationToken>()), Times.Once);
+        _rentals.Verify(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: false), Today, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
