@@ -1,18 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <!-- Araç Kiralama application mark: a white car seen from the side, with a key ring, on a teal tile. -->
-  <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2bb3a3"/>
-      <stop offset="1" stop-color="#11695f"/>
-    </linearGradient>
-  </defs>
-  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
-  <path d="M44 150 L58 116 Q64 102 80 100 L170 100 Q184 100 194 112 L212 134 Q222 136 222 148 L222 162 Q222 170 214 170 L42 170 Q36 170 36 162 L36 156 Q36 150 44 150 Z" fill="#ffffff"/>
-  <path d="M76 112 L100 112 L100 134 L64 134 Z M110 112 L162 112 Q172 112 180 122 L190 134 L110 134 Z" fill="#11695f"/>
-  <circle cx="82" cy="172" r="20" fill="#1c2b2a"/>
-  <circle cx="82" cy="172" r="8" fill="#e8f4f2"/>
-  <circle cx="178" cy="172" r="20" fill="#1c2b2a"/>
-  <circle cx="178" cy="172" r="8" fill="#e8f4f2"/>
-  <circle cx="190" cy="66" r="18" fill="none" stroke="#ffffff" stroke-width="8"/>
-  <path d="M176 78 L150 104" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  <title>Araç Kiralama</title>
+  <desc>A road that runs to a signal orange location pin on an asphalt graphite tile: the way to the car you pick up.</desc>
+  <rect x="0" y="0" width="256" height="256" rx="56" fill="#212933"/>
+  <path d="M 113 118 L 143 118 L 214 214 L 42 214 Z" fill="#F4F6F8"/>
+  <path d="M 126 132 L 130 132 L 131 148 L 125 148 Z" fill="#212933"/>
+  <path d="M 124 160 L 132 160 L 134 182 L 122 182 Z" fill="#212933"/>
+  <path d="M 121 194 L 135 194 L 137 214 L 119 214 Z" fill="#212933"/>
+  <circle cx="128" cy="68" r="34" fill="#F0661A"/>
+  <path d="M 99 86 L 157 86 L 128 124 Z" fill="#F0661A" stroke="#F0661A" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="128" cy="68" r="13" fill="#212933"/>
 </svg>
