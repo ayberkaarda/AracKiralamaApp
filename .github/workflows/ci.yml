@@ -74,9 +74,9 @@ jobs:
       - name: Zip
         shell: pwsh
         run: |
-          Copy-Item README.md, README.tr.md, CHANGELOG.md, CHANGELOG.tr.md publish/
+          Copy-Item README.md, README.tr.md, CHANGELOG.md, CHANGELOG.tr.md, LICENSE publish/
           New-Item -ItemType Directory -Force publish/docs | Out-Null
-          Copy-Item docs/*.sql publish/docs/
+          Copy-Item docs/*.sql, docs/CREDITS.md publish/docs/
           Compress-Archive -Path publish/* -DestinationPath "$($env:ARTIFACT).zip"
       - uses: actions/upload-artifact@v4
         with:
