@@ -1,6 +1,7 @@
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 
 namespace AracKiralama.Business.Exports;
 
@@ -45,8 +46,11 @@ internal static class ExportFormat
         return [.. encoding.GetPreamble(), .. encoding.GetBytes(csv)];
     }
 
+    // Turkish letters stay readable; markup characters, quotes and controls are encoded.
+    private static readonly HtmlEncoder Encoder = HtmlEncoder.Create(UnicodeRanges.All);
+
     /// <summary>HTML text: every value is encoded, never written as markup.</summary>
-    public static string Html(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+    public static string Html(string? value) => Encoder.Encode(value ?? string.Empty);
 
     /// <summary>
     /// A self-contained printable page: no script, no external resource, a Content-Security-Policy that
