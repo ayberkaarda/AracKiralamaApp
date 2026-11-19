@@ -19,7 +19,8 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 
 - ✅ **Kendi görsel kimliği**: asfalt grafit ve sinyal turuncusu, yol ve konum iğnesi logosu; başlıklar, ücretler,
   plakalar ve takvim günleri Bahnschrift (Windows'un DIN tarzı trafik levhası yazı tipi), metinler Segoe UI ile.
-  Resmi olmayan araçlar kendi renginde kodla çizilir; hiçbir fotoğraf, marka ya da gerçek model kullanılmaz.
+  Yaygın araç modelleri, Wikimedia Commons'tan alınıp uygulamayla birlikte gelen bir fotoğrafla gösterilir (bkz.
+  [Görsel kaynakları](#görsel-kaynakları)); diğer araçlar kendi renginde kodla çizilir.
 - ✅ **Açık, koyu ve yüksek karşıtlık**: `Appearance:Theme` ayarı `Light` (varsayılan), `Dark` ya da `System` (Windows
   uygulama modunu izler) seçer. Yüksek karşıtlık her zaman önceliklidir; Windows sistem renkleri ve yerel denetimler
   kullanılır, seçili ve üzerine gelinen öğeler HighlightText ile yazılır. Açık ekranlar, uygulama çalışırken yüksek
@@ -35,8 +36,12 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
   yakıt tipi, renk ve günlük ücretle.
 - ✅ **Filtreler**: marka ("Marka"), vites tipi ("Vites Tipi") ve yakıt tipi ("Yakıt Tipi"); filtre listelerinin
   doldurulması kendiliğinden yükleme başlatmaz ve yalnızca son filtrenin cevabı gösterilir.
-- ✅ **Araç resimleri** arka planda ve yalnızca herkese açık http veya https adreslerinden yüklenir; diğer her
-  durumda uygulamanın aracı kendi renginde gösteren çizimi kullanılır.
+- ✅ **Araç resimleri**: on iki yaygın model (Renault Clio, Fiat Egea, Toyota Corolla, Volkswagen Golf, Dacia Duster,
+  Peugeot 2008, Tesla Model 3, Fiat 500, Ford Transit Custom, Volkswagen Touran, Mazda MX-5, Fiat Doblò) uygulamayla
+  birlikte gelen bir fotoğrafla gösterilir; eşleşme marka ve modele göre yapılır ("Renault" + "Clio 1.0 TCe" Clio ile
+  eşleşir). Fotoğraf aracın kendisini değil modelini gösterir. Aracın kendi resim adresi arka planda ve yalnızca
+  herkese açık http veya https adreslerinden yüklenir ve fotoğrafın yerine geçer; diğer her araç uygulamanın onu
+  kendi renginde gösteren çizimiyle görünür. Birlikte gelen fotoğraflar için web'den hiçbir şey yüklenmez.
 
 ### Kiralama, iptal ve iade
 
@@ -125,9 +130,9 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 
 ## 🖼️ Ekran Görüntüleri
 
-Ekranlar hayali bir filoyla (uydurma marka ve modeller, hiçbir plakanın kullanmadığı 00 il koduyla gösterim
-plakaları, example.com üzerinde örnek hesaplar) pencere açılmadan çizilir; gerçek veri, marka ya da fotoğraf
-göstermez, her araç uygulamanın kendi çizimidir. Her görsel 2x sürümüne bağlanır. Yeniden çizmek için:
+Ekranlar örnek bir filoyla (birlikte gelen fotoğraflarıyla yaygın gerçek modeller, hiçbir plakanın kullanmadığı
+00 il koduyla gösterim plakaları, example.com üzerinde örnek hesaplar) pencere açılmadan çizilir; gerçek müşteri ya
+da şirket verisi göstermez. Her görsel 2x sürümüne bağlanır. Yeniden çizmek için:
 `dotnet run --project tools/Screenshots -c Release -- screenshots`.
 
 | | |
@@ -188,17 +193,18 @@ AracKiralamaApp/
 │   ├── AracKiralama.Domain/     # Varlıklar (User, Car, Rental, SetupKey) ve repository sözleşmeleri
 │   ├── AracKiralama.Business/   # Giriş, kurulum, araç, kiralama ve hesap servisleri, fiyatlar, Security/ (PBKDF2, kilit, kurulum anahtarı), Validation/ (FluentValidation), Auditing/
 │   ├── AracKiralama.Data/       # EF Core DbContext, yapılandırmalar, Persistence/Migrations/, eski veritabanı yükseltmesi, araç kilitleri, veritabanı saati, demo verisi, repository'ler
-│   └── AracKiralama.UI/         # WinForms ekranları, Theming/ (paletler, yazı tipleri, temalı denetimler, araç çizimi), Infrastructure/ (ekran çerçevesi, hatalar, loglama, iletişim kutuları, yazma koruması, resim yükleyici), Program.cs (bileşim kökü)
+│   └── AracKiralama.UI/         # WinForms ekranları, Theming/ (paletler, yazı tipleri, temalı denetimler, araç çizimi), Infrastructure/ (ekran çerçevesi, hatalar, loglama, iletişim kutuları, yazma koruması, resim yükleyici, birlikte gelen araç fotoğrafları), Assets/Cars/ (araç fotoğrafları), Program.cs (bileşim kökü)
 ├── tests/
 │   ├── AracKiralama.Business.Tests/  # Doğrulayıcılar, denetim kodları, şifre özeti, kilit, kiralama kuralları, fiyatlar ve sahiplik (Moq)
 │   ├── AracKiralama.Data.Tests/      # SQLite üzerinde servisler; SQL Server üzerinde kiralama yarışları, kurulum anahtarları, kısıtlı oturum ve eski veritabanı yükseltmesi
 │   └── AracKiralama.UI.Tests/        # Ekranlar, yerleşim, temalar, yapılandırma, hatalar, loglar, resimler, odak ve yazma korumaları (pencere açılmaz)
-├── tools/Screenshots/           # Simge ve README ekran görüntüleri, hayali bir filoyla pencere açılmadan çizilir
+├── tools/Screenshots/           # Simge ve README ekran görüntüleri, örnek bir filoyla pencere açılmadan çizilir
 ├── screenshots/                 # 1x ve 2x README görselleri
 ├── assets/                      # Özgün logo (logo.svg), simgesi ve 256 piksellik görseli
 ├── docs/
 │   ├── issue-setup-key.sql      # Kurulum anahtarı, veritabanı sahibi çalıştırır
 │   ├── grant-app-login.sql      # Uygulamanın kendi oturumunun yetkileri
+│   ├── CREDITS.md               # Araç fotoğraflarının yazarları ve lisansları (İngilizce)
 │   └── THREAT_MODEL.md          # Tehdit modeli (İngilizce)
 ├── .github/workflows/ci.yml     # Derleme, test, SQL Server ve sürüm iş akışı
 ├── CHANGELOG.tr.md
@@ -367,8 +373,9 @@ vardır.
 ### 5. Demo modu
 
 Demo modu isteğe bağlıdır ve varsayılan olarak kapalıdır. `ARAC_DEMO=1` (veya `true`) ortam değişkeni ya da
-`appsettings.json` içindeki `"Seed": { "Demo": true }`, yalnızca tamamen boş bir veritabanına beş hayali araç
-(plakaları `00` ile başlar) ekler. Demo modu **hiçbir hesap oluşturmaz**: ilk yönetici her zamanki gibi ilk kurulumla
+`appsettings.json` içindeki `"Seed": { "Demo": true }`, yalnızca tamamen boş bir veritabanına yaygın modellerden
+beş örnek araç (Renault Clio, Fiat Egea, Ford Transit Custom, Fiat 500 ve Tesla Model 3; gösterim plakaları `00` ile
+başlar) ekler. Demo modu **hiçbir hesap oluşturmaz**: ilk yönetici her zamanki gibi ilk kurulumla
 oluşturulur.
 
 ### 6. Loglar
@@ -419,7 +426,7 @@ dotnet test -c Release
 |---|---|---|
 | `tests/AracKiralama.Business.Tests` | Birim | Doğrulayıcı sınırları ve mesaj sırası (kullanıcı adı 3/32, şifre 8/64, e-posta, telefon, araç alanları, plakalar, kiralama günleri ve tarihleri), korunan eski değerler, denetim kodları, PBKDF2 ve biçim yükseltmesi, kilit, kiralama ve fiyat kuralları, katı Moq taklitleriyle sahiplik ve yönetici denetimleri, oturum sürümleri, bakım girdisi, takvim durumları, gelir toplamları ve sınırları, formüle karşı güvenli CSV, sözleşmenin kodlanması ve CSP |
 | `tests/AracKiralama.Data.Tests` | Entegrasyon | Bellek içi SQLite üzerinde servisler ve repository'ler (çakışma sınırları, en kısa ve en uzun kiralama, kiralama ufku, güne göre iptal veya iade, IDOR cevapları, kilit süresi, yetkisi alınan oturumlar, reddedilen girdinin hiçbir şey yazmaması, bakımın kapattığı günler ve eski sürümler, takvim, gelir ve sözleşme sahiplik denetimleri, rol veya şifre değişikliğiyle biten oturumlar); SQL Server üzerinde kiralama, kilit, bakım ve eski form yarışları, kısa komut zaman aşımında meşgul araç kilidi, kısıtlı oturumla kurulum anahtarları ve tüm yeni özellikler ve eski veritabanı yükseltmesi |
-| `tests/AracKiralama.UI.Tests` | Birim | Her ekranın 1024x600, 1366x768 ve 1920x1040 çalışma alanlarında, 1 ile 2 arası yazı boyutlarında ve uzun adlarla sığması (kesilme ve çakışma yok, başlık ve alt bilgi görünür), temalı denetimler, sekme sırası, pencere içi iletiler, palet karşıtlığı, sistem renkleriyle yüksek karşıtlık ve ekranlar açıkken geçişi, kart ve takvim yerleşimi, araç çizimi, örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, resim adresi denetimleri, kilit sonrası odak, yazma korumaları, takvim ayları ve raporlarda son isteğin kazandığı yükleme, tek bakım ve sözleşme kaydı, eski kayıtta yeniden yükleme, yazı tipine göre boyutlanan takvim hücreleri, nötr marka |
+| `tests/AracKiralama.UI.Tests` | Birim | Her ekranın 1024x600, 1366x768 ve 1920x1040 çalışma alanlarında, 1 ile 2 arası yazı boyutlarında ve uzun adlarla sığması (kesilme ve çakışma yok, başlık ve alt bilgi görünür), temalı denetimler, sekme sırası, pencere içi iletiler, palet karşıtlığı, sistem renkleriyle yüksek karşıtlık ve ekranlar açıkken geçişi, kart ve takvim yerleşimi, araç çizimi, birlikte gelen araç fotoğrafları (kaynağı belirtilmiş, boyutu sınırlı, marka ve modele göre eşleşen, her palette çizilen), örnek yapılandırma, hata mesajları, log içeriği ve saklama süresi, resim adresi denetimleri, kilit sonrası odak, yazma korumaları, takvim ayları ve raporlarda son isteğin kazandığı yükleme, tek bakım ve sözleşme kaydı, eski kayıtta yeniden yükleme, yazı tipine göre boyutlanan takvim hücreleri, nötr marka |
 
 SQL Server testleri `ARAC_TEST_SQLSERVER` içindeki sunucuda geçici veritabanları kullanır (varsayılan: Windows
 kimlik doğrulamalı yerel SQL Express). `ARAC_SKIP_SQL_TESTS=1` tanımlıysa veya sunucuya ulaşılamıyorsa atlanır;
@@ -444,7 +451,8 @@ mesaj kutusunu değiştirir; hiçbir pencere açılmaz.
 2. **sql-server** (Linux): veri testleri geçici bir SQL Server konteynerine karşı, `ARAC_REQUIRE_SQL_TESTS=1` ile
 3. **release** (yalnızca `v*` etiketlerinde): etiket adı bir ortam değişkeniyle aktarılır ve
    `^v[A-Za-z0-9._-]+$` ile denetlenir; ardından çatıya bağımlı bir win-x64 derlemesi yayımlanır ve README'ler,
-   değişiklik günlükleri ve `docs/*.sql` ile birlikte `AracKiralama-<etiket>-win-x64.zip` iş akışı çıktısı olarak
+   değişiklik günlükleri, lisans, `docs/*.sql` ve görsel kaynakları (`docs/CREDITS.md`) ile birlikte
+   `AracKiralama-<etiket>-win-x64.zip` iş akışı çıktısı olarak
    yüklenir
 
 Aynı derlemeyi yerelde üretmek için:
@@ -485,6 +493,16 @@ Hedef makinede .NET 10 Desktop Runtime gerekir. `appsettings.json` dosyasını `
 
 Proje hakkında sorularınız için iletişime geçebilir veya pull request gönderebilirsiniz.
 
+## Görsel kaynakları
+
+Araç fotoğrafları Wikimedia Commons'tan CC0, CC BY ya da CC BY-SA lisanslarıyla alınmıştır; her birinin yazarı,
+lisansı, kaynak sayfası ve yapılan değişiklikler [docs/CREDITS.md](docs/CREDITS.md) dosyasında listelenir.
+Fotoğraflar kodun MIT Lisansı kapsamında değildir: her fotoğraf kendi lisansını korur.
+
+Bu proje hiçbir araç üreticisiyle bağlantılı değildir ve hiçbiri tarafından desteklenmemektedir; marka ve model
+adları yalnızca araçları tanımlamak için kullanılır.
+
 ## Lisans
 
-[MIT Lisansı](LICENSE) ile yayımlanmıştır.
+Kod [MIT Lisansı](LICENSE) ile yayımlanmıştır. Araç fotoğrafları kendi lisanslarını korur (bkz.
+[Görsel kaynakları](#görsel-kaynakları)).
