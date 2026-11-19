@@ -150,7 +150,16 @@ namespace AracKiralama.UI
 
             await WriteAsync(async () =>
             {
-                await _cars.UpdateAsync(_session, id, ReadInput());
+                try
+                {
+                    await _cars.UpdateAsync(_session, id, ReadInput());
+                }
+                catch (BusinessRuleException ex) when (ex.FieldErrors.Count == 0)
+                {
+                    await ReloadAfterRefusalAsync(id);
+                    throw;
+                }
+
                 Prompts.Inform("Araç başarıyla güncellendi!");
                 await LoadCarsAsync();
                 if (ShownCars.FirstOrDefault(c => c.Id == id) is { } updated)
@@ -175,7 +184,16 @@ namespace AracKiralama.UI
                     return;
                 }
 
-                await _cars.DeleteAsync(_session, id);
+                try
+                {
+                    await _cars.DeleteAsync(_session, id);
+                }
+                catch (BusinessRuleException)
+                {
+                    await ReloadAfterRefusalAsync(id);
+                    throw;
+                }
+
                 Prompts.Inform("Araç başarıyla silindi.");
                 ClearForm();
                 await LoadCarsAsync();
@@ -188,9 +206,26 @@ namespace AracKiralama.UI
             await this.RunAsync(LoadCarsAsync);
         }
 
-        /// <summary>Runs a car write exclusively; invalid fields are marked as the original form marked empty ones.</summary>
-        private Task<bool> WriteAsync(Func<Task> write) =>
-            this.RunExclusiveAsync(
+        /// <summary>
+        /// After a refused change or deletion the car may have been changed or deleted elsewhere: the list
+        /// is loaded again, and a car that no longer exists leaves the form.
+        /// </summary>
+        private async Task ReloadAfterRefusalAsync(int carId)
+        {
+            await LoadCarsAsync();
+            if (!ShownCars.Any(c => c.Id == carId))
+            {
+                ClearForm();
+            }
+        }
+
+        /// <summary>
+        /// Runs a car write exclusively; invalid fields are marked as the original form marked empty ones.
+        /// The update button follows the selection the write left behind, not the state before it.
+        /// </summary>
+        private async Task<bool> WriteAsync(Func<Task> write)
+        {
+            var ran = await this.RunExclusiveAsync(
                 _write,
                 async () =>
                 {
@@ -210,6 +245,13 @@ namespace AracKiralama.UI
                 btnUpdateCar,
                 btnDeleteCar,
                 btnRefresh);
+            if (ran && !IsDisposed)
+            {
+                btnUpdateCar.Enabled = SelectedCarId is not null;
+            }
+
+            return ran;
+        }
 
         private CarInput ReadInput() => new(
             txtBrand.Text,

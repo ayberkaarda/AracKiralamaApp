@@ -166,6 +166,71 @@ public sealed class ExclusiveWriteTests
         Assert.Equal(1, rentals.EndCalls);
     });
 
+    /// <summary>
+    /// A rental ended elsewhere meanwhile: the refusal is shown and the list is loaded again, so the
+    /// ended rental and its button do not stay on the screen.
+    /// </summary>
+    [Fact]
+    public void EndRental_AlreadyEnded_RefreshesTheList() => Run(() =>
+    {
+        const string NotFound = "Kiralama bulunamadı veya zaten sona ermiş.";
+        var shownBefore = NoDialogs.Requested.Count(r => r.Contains(NotFound, StringComparison.Ordinal));
+        var rentals = new ControlledRentalService();
+        using var profile = new ProfileForm(rentals, new NoFormsFactory(), Sessions.User) { Prompts = new RecordingPrompts() };
+        using var panel = new RentedCarsPanel(rentals, new ControlledCarService(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        Assert.True(profile.LoadRentalsAsync().IsCompletedSuccessfully);
+        Assert.True(panel.LoadRentalsAsync().IsCompletedSuccessfully);
+        rentals.Rentals.RemoveAt(0);
+
+        var fromProfile = profile.EndAsync(profile.ShownRentals[0]);
+        rentals.RefuseEnd(NotFound);
+        var fromPanel = panel.EndAsync(panel.ShownRentals[0]);
+        rentals.RefuseEnd(NotFound);
+
+        Assert.False(fromProfile.Result);
+        Assert.False(fromPanel.Result);
+        Assert.Equal([10], profile.ShownRentals.Select(r => r.Id));
+        Assert.Equal([10], panel.ShownRentals.Select(r => r.Id));
+        Assert.True(Assert.Single(profile.EndButtons).Enabled);
+        Assert.Equal(shownBefore + 2, NoDialogs.Requested.Count(r => r.Contains(NotFound, StringComparison.Ordinal)));
+    });
+
+    /// <summary>A booking refused because the days were taken meanwhile shows the taken days as they are now.</summary>
+    [Fact]
+    public void Rent_RefusedAsOverlapping_ShowsTheTakenDaysAgain() => Run(() =>
+    {
+        var rentals = new ControlledRentalService();
+        using var form = new RentalForm(new ControlledCarService(), rentals, Sessions.User, 1) { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadCarAsync().IsCompletedSuccessfully);
+        rentals.Booked.Add(new(new DateOnly(2026, 3, 10), new DateOnly(2026, 3, 12)));
+
+        var rent = form.RentAsync();
+        rentals.RefuseRent("Araç seçtiğiniz tarihlerin bir kısmında başka bir kiralamada. Lütfen başka tarihler seçin.");
+
+        Assert.False(rent.Result);
+        Assert.Equal(2, form.Booked.Count);
+        Assert.Contains("10.03.2026 - 12.03.2026", Find<Label>(form, "lblBooked").Text, StringComparison.Ordinal);
+        Assert.True(Find<Button>(form, "btnConfirm").Enabled);
+    });
+
+    /// <summary>A car deleted elsewhere meanwhile: after the refusal the list is loaded again and the form no longer holds the car.</summary>
+    [Fact]
+    public void UpdateCar_DeletedMeanwhile_RefreshesTheListAndClearsTheForm() => Run(() =>
+    {
+        var cars = new ControlledCarService { UpdateFailure = new BusinessRuleException("Araç bulunamadı.") };
+        using var form = new AdminPanel(cars, new NoFormsFactory(), Sessions.Admin) { Prompts = new RecordingPrompts() };
+        Assert.True(form.LoadCarsAsync().IsCompletedSuccessfully);
+        form.SelectCar(cars.Cars[0]);
+        cars.Cars.RemoveAt(0);
+
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.Equal([2], form.ShownCars.Select(c => c.Id));
+        Assert.Null(form.SelectedCarId);
+        Assert.Empty(Find<TextBox>(form, "txtBrand").Text);
+        Assert.False(Find<Button>(form, "btnUpdateCar").Enabled);
+    });
+
     [Fact]
     public void AddCar_InvalidFields_AreMarkedNextToTheirControls() => Run(() =>
     {

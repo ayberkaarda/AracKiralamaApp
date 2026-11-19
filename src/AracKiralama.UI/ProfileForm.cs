@@ -1,3 +1,4 @@
+using AracKiralama.Business;
 using AracKiralama.Business.Services;
 using AracKiralama.Domain.Entities;
 using AracKiralama.UI.Infrastructure;
@@ -82,7 +83,18 @@ namespace AracKiralama.UI
                         return;
                     }
 
-                    var ending = await _rentals.EndAsync(_session, rental.Id);
+                    RentalEnding ending;
+                    try
+                    {
+                        ending = await _rentals.EndAsync(_session, rental.Id);
+                    }
+                    catch (BusinessRuleException)
+                    {
+                        // Ended elsewhere meanwhile: the list shows the rentals as they are now.
+                        await LoadRentalsAsync();
+                        throw;
+                    }
+
                     ended = true;
                     Prompts.Inform(ending == RentalEnding.Cancelled ? "Kiralama başarıyla iptal edildi." : "Araç iade alındı.");
                     await LoadRentalsAsync();

@@ -171,7 +171,11 @@ internal sealed class ControlledRentalService : IRentalService
 
     public void CompleteRent() => _rent.SetResult(new RentalReceipt(11, LastQuote!.Total, LastQuote.StartDate, LastQuote.EndDate));
 
+    public void RefuseRent(string message) => _rent.SetException(new BusinessRuleException(message));
+
     public void CompleteEnd() => _end.SetResult(RentalEnding.Cancelled);
+
+    public void RefuseEnd(string message) => _end.SetException(new BusinessRuleException(message));
 }
 
 /// <summary>Answers confirmations with yes and records every message instead of showing a dialog.</summary>

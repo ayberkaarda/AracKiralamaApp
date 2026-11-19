@@ -117,7 +117,17 @@ namespace AracKiralama.UI
                         return;
                     }
 
-                    await _rentals.RentAsync(_session, quote);
+                    try
+                    {
+                        await _rentals.RentAsync(_session, quote);
+                    }
+                    catch (BusinessRuleException)
+                    {
+                        // The days or the price may have changed meanwhile: show them as they are now.
+                        await ReloadCarAfterRefusalAsync();
+                        throw;
+                    }
+
                     rented = true;
                 },
                 btnConfirm,
@@ -153,6 +163,22 @@ namespace AracKiralama.UI
             }
 
             return text.ToString();
+        }
+
+        /// <summary>
+        /// Loads the car and its taken days again after a refused booking. When the car itself is gone
+        /// or closed, the booking's own refusal is the message the customer sees.
+        /// </summary>
+        private async Task ReloadCarAfterRefusalAsync()
+        {
+            try
+            {
+                await LoadCarAsync();
+            }
+            catch (BusinessRuleException)
+            {
+                // The refusal that follows already says why the car cannot be booked.
+            }
         }
 
         private void UpdateTotal()
