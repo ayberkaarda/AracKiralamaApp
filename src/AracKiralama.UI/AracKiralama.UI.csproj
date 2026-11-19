@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="AracKiralama.UI.Tests" />
+    <InternalsVisibleTo Include="AracKiralama.Screenshots" />
   </ItemGroup>
 
   <ItemGroup>

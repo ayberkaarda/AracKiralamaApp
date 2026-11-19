@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Console tool for the application icon and the README images. It never shows a window.
+    Console tool for the application icon and the README images. It never shows a window:
+    forms are created with in-memory services and an invented fleet and drawn with Control.DrawToBitmap.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -11,5 +12,9 @@
     <RootNamespace>AracKiralama.Screenshots</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AracKiralama.UI\AracKiralama.UI.csproj" />
+  </ItemGroup>
 
 </Project>
