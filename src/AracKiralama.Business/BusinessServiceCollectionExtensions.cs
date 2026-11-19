@@ -47,6 +47,7 @@ public static class BusinessServiceCollectionExtensions
         services.AddSingleton<IRentalService, RentalService>();
         services.AddSingleton<IAccountService, AccountService>();
         services.AddSingleton<IMaintenanceService, MaintenanceService>();
+        services.AddSingleton<IAvailabilityService, AvailabilityService>();
         return services;
     }
 }
