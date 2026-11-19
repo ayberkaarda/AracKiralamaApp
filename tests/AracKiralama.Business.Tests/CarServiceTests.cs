@@ -59,7 +59,7 @@ public sealed class CarServiceTests
         await Assert.ThrowsAsync<AccessDeniedException>(() => cars.DeleteAsync(Sessions.Admin, 1, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.GetAllAsync(Sessions.Admin, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(
-            () => accounts.UpdateAsync(Sessions.Admin, Sessions.Admin.UserId, new AccountInput("yonetici", null, null, null, UserRole.Admin), Ct));
+            () => accounts.UpdateAsync(Sessions.Admin, Sessions.Admin.UserId, 0, new AccountInput("yonetici", null, null, null, UserRole.Admin), Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => rentals.GetActiveRentalsAsync(Sessions.Admin, CarFilter.None, Ct));
 
         _cars.VerifyNoOtherCalls();

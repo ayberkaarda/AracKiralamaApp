@@ -168,12 +168,12 @@ public sealed class SqlServerConcurrencyTests
         var ySession = await auth.SignInAsync("yadmin", Password, Ct);
 
         // The founder steps down, so x and y are the only admins.
-        await accounts.UpdateAsync(xSession, founder.UserId, new AccountInput("yonetici", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(xSession, founder.UserId, await AccountVersionAsync(a, founder.UserId), new AccountInput("yonetici", null, null, null, UserRole.User), Ct);
 
         var results = await RaceAsync(
         [
-            () => a.GetRequiredService<IAccountService>().UpdateAsync(xSession, y, new AccountInput("yadmin", null, null, null, UserRole.User), Ct),
-            () => b.GetRequiredService<IAccountService>().UpdateAsync(ySession, x, new AccountInput("xadmin", null, null, null, UserRole.User), Ct),
+            () => a.GetRequiredService<IAccountService>().UpdateAsync(xSession, y, 0, new AccountInput("yadmin", null, null, null, UserRole.User), Ct),
+            () => b.GetRequiredService<IAccountService>().UpdateAsync(ySession, x, 0, new AccountInput("xadmin", null, null, null, UserRole.User), Ct),
         ]);
 
         Assert.Single(results, r => r is null);
@@ -201,9 +201,9 @@ public sealed class SqlServerConcurrencyTests
         await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
 
         var promoting = bApp.GetRequiredService<IAccountService>().UpdateAsync(
-            bSession, customer.UserId, new AccountInput("uye", null, "uye@example.com", "5540000001", UserRole.Admin), Ct);
+            bSession, customer.UserId, 0, new AccountInput("uye", null, "uye@example.com", "5540000001", UserRole.Admin), Ct);
         await gate.WaitUntilReachedAsync(Ct);
-        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
         gate.Release();
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => promoting);
@@ -229,7 +229,7 @@ public sealed class SqlServerConcurrencyTests
         var changing = bApp.GetRequiredService<ICarService>().UpdateAsync(
             bSession, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 DMT 01", "1", null, true), Ct);
         await gate.WaitUntilReachedAsync(Ct);
-        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
         gate.Release();
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => changing);
@@ -258,8 +258,8 @@ public sealed class SqlServerConcurrencyTests
         var changing = bApp.GetRequiredService<ICarService>().UpdateAsync(
             bSession, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 SRM 01", "1", null, true), Ct);
         await gate.WaitUntilReachedAsync(Ct);
-        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
-        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.Admin), Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.Admin), Ct);
         gate.Release();
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => changing);

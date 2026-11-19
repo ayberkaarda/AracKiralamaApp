@@ -210,10 +210,10 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var secondSession = await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct);
         Assert.True(secondSession.IsAdmin);
 
-        await accounts.UpdateAsync(_admin, second, new AccountInput("ikinci", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(_admin, second, await AccountVersionAsync(_db.Services, second), new AccountInput("ikinci", null, null, null, UserRole.User), Ct);
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => AddCarAsync(_db.Services, secondSession, "00 YNT 01"));
-        await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.UpdateAsync(secondSession, second, new AccountInput("ikinci", null, null, null, UserRole.Admin), Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(async () => await accounts.UpdateAsync(secondSession, second, await AccountVersionAsync(_db.Services, second), new AccountInput("ikinci", null, null, null, UserRole.Admin), Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.GetAllAsync(secondSession, Ct));
         Assert.Equal(UserRole.User, (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == second).Role);
     }
@@ -229,8 +229,8 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var second = await accounts.AddAsync(_admin, new AccountInput("ikinci", Password, null, null, UserRole.Admin), Ct);
         var old = await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct);
 
-        await accounts.UpdateAsync(_admin, second, new AccountInput("ikinci", null, null, null, UserRole.User), Ct);
-        await accounts.UpdateAsync(_admin, second, new AccountInput("ikinci", null, null, null, UserRole.Admin), Ct);
+        await accounts.UpdateAsync(_admin, second, await AccountVersionAsync(_db.Services, second), new AccountInput("ikinci", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(_admin, second, await AccountVersionAsync(_db.Services, second), new AccountInput("ikinci", null, null, null, UserRole.Admin), Ct);
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => AddCarAsync(_db.Services, old, "00 SRM 01"));
         await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.GetAllAsync(old, Ct));
@@ -244,10 +244,10 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     public async Task PasswordSetByAnAdmin_EndsTheAccountsSessions()
     {
         var accounts = _db.Get<IAccountService>();
-        await accounts.UpdateAsync(_admin, _customer.UserId, new AccountInput("ornek", null, "yeni@example.com", "5540000001", UserRole.User), Ct);
+        await accounts.UpdateAsync(_admin, _customer.UserId, await AccountVersionAsync(_db.Services, _customer.UserId), new AccountInput("ornek", null, "yeni@example.com", "5540000001", UserRole.User), Ct);
         Assert.Empty(await _db.Get<IRentalService>().GetMyActiveRentalsAsync(_customer, Ct));
 
-        await accounts.UpdateAsync(_admin, _customer.UserId, new AccountInput("ornek", "Yeni.Sifre123", "yeni@example.com", "5540000001", UserRole.User), Ct);
+        await accounts.UpdateAsync(_admin, _customer.UserId, await AccountVersionAsync(_db.Services, _customer.UserId), new AccountInput("ornek", "Yeni.Sifre123", "yeni@example.com", "5540000001", UserRole.User), Ct);
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IRentalService>().GetMyActiveRentalsAsync(_customer, Ct));
         await Assert.ThrowsAsync<AccessDeniedException>(() => RentAsync(_db.Services, _customer, CarId, startOffset: 1));
@@ -261,7 +261,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     {
         var users = _db.Get<IUserRepository>();
         var verified = (await users.FindByUserNameAsync("ornek", Ct))!;
-        await _db.Get<IAccountService>().UpdateAsync(_admin, _customer.UserId, new AccountInput("ornek", null, "ornek@example.com", "5540000001", UserRole.Admin), Ct);
+        await _db.Get<IAccountService>().UpdateAsync(_admin, _customer.UserId, await AccountVersionAsync(_db.Services, _customer.UserId), new AccountInput("ornek", null, "ornek@example.com", "5540000001", UserRole.Admin), Ct);
 
         Assert.False(await users.RecordSuccessfulLoginAsync(verified, Start.UtcDateTime, null, Ct));
     }
@@ -286,7 +286,7 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         List<Func<Task>> refused =
         [
             () => users.AddAsync(newcomer, asCustomer, Ct),
-            () => users.UpdateAsync(asCustomer, new AccountUpdate(customer, "ornek", null, null, UserRole.Admin, null), Ct),
+            () => users.UpdateAsync(asCustomer, new AccountUpdate(customer, 0, "ornek", null, null, UserRole.Admin, null), Ct),
             () => users.DeleteAsync(asCustomer, _admin.UserId, Ct),
             () => cars.AddAsync(asCustomer, new Car { Brand = "A", Model = "B", Year = 2020, Transmission = "Manuel", FuelType = "Benzin", Color = "Gri", Plate = "00 YOK 01", DailyPrice = 1m }, Ct),
             () => cars.UpdateAsync(asCustomer, car, Ct),
@@ -348,13 +348,56 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.DoesNotContain(await accounts.GetAllAsync(_admin, Ct), u => u.Id == unused.UserId);
     }
 
+    /// <summary>
+    /// Admin A opened the form of admin X; then the founder demoted X (for example because X was
+    /// compromised). A's save of only a phone change carries the loaded version and the old role: it is
+    /// refused as stale, so X stays a customer and cannot sign in with admin rights again.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccount_FromAFormLoadedBeforeADemotion_CannotGiveTheRoleBack()
+    {
+        var accounts = _db.Get<IAccountService>();
+        await accounts.AddAsync(_admin, new AccountInput("aadmin", Password, null, null, UserRole.Admin), Ct);
+        var x = await accounts.AddAsync(_admin, new AccountInput("xadmin", Password, null, null, UserRole.Admin), Ct);
+        var aSession = await _db.Get<IAuthService>().SignInAsync("aadmin", Password, Ct);
+        var loaded = (await accounts.GetAllAsync(aSession, Ct)).Single(u => u.Id == x);
+
+        await accounts.UpdateAsync(_admin, x, await AccountVersionAsync(_db.Services, x), new AccountInput("xadmin", null, null, null, UserRole.User), Ct);
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => accounts.UpdateAsync(aSession, x, loaded.Version, new AccountInput("xadmin", null, null, "5540000009", loaded.Role), Ct));
+
+        Assert.Equal(AccountService.ChangedElsewhere, error.Message);
+        Assert.True(error.IsStale);
+        var stored = (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == x);
+        Assert.Equal((UserRole.User, (string?)null, 1), (stored.Role, stored.Phone, stored.Version));
+    }
+
+    /// <summary>
+    /// The same race decided inside the write: the form's version passed the service's check, but the
+    /// demotion committed before the UPDATE. The conditional UPDATE matches no row and nothing is written.
+    /// </summary>
+    [Fact]
+    public async Task UpdateAccountRepository_WithAnOutdatedVersion_WritesNothing()
+    {
+        var users = _db.Get<IUserRepository>();
+        var accounts = _db.Get<IAccountService>();
+        var x = await accounts.AddAsync(_admin, new AccountInput("xadmin", Password, null, null, UserRole.Admin), Ct);
+        await accounts.UpdateAsync(_admin, x, 0, new AccountInput("xadmin", null, null, null, UserRole.User), Ct);
+
+        var outcome = await users.UpdateAsync(_admin.Actor, new AccountUpdate(x, 0, "xadmin", null, "5540000009", UserRole.Admin, null), Ct);
+
+        Assert.Equal(AccountUpdateOutcome.ChangedElsewhere, outcome);
+        var stored = (await accounts.GetAllAsync(_admin, Ct)).Single(u => u.Id == x);
+        Assert.Equal((UserRole.User, (string?)null, 1), (stored.Role, stored.Phone, stored.Version));
+    }
+
     [Fact]
     public async Task UpdateAccount_LastAdminKeepsTheRole()
     {
         var accounts = _db.Get<IAccountService>();
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(
-            () => accounts.UpdateAsync(_admin, _admin.UserId, new AccountInput("yonetici", null, null, null, UserRole.User), Ct));
+            async () => await accounts.UpdateAsync(_admin, _admin.UserId, await AccountVersionAsync(_db.Services, _admin.UserId), new AccountInput("yonetici", null, null, null, UserRole.User), Ct));
 
         Assert.Equal(AccountService.LastAdmin, error.Message);
     }

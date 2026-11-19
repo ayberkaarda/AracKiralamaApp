@@ -145,7 +145,7 @@ public sealed class LegacyUpgradeTests
         // The customer sees the old rental and returns it; the admin can reset a legacy account's password.
         var mine = Assert.Single(await rentals.GetMyActiveRentalsAsync(user, Ct));
         Assert.Equal(RentalEnding.Returned, await rentals.EndAsync(user, mine.Id, Ct));
-        await provider.GetRequiredService<IAccountService>().UpdateAsync(admin, 6, new AccountInput("eski", "Yeni.Sifre12", null, null, UserRole.User), Ct);
+        await provider.GetRequiredService<IAccountService>().UpdateAsync(admin, 6, await AccountVersionAsync(provider, 6), new AccountInput("eski", "Yeni.Sifre12", null, null, UserRole.User), Ct);
         await auth.SignInAsync("eski", "Yeni.Sifre12", Ct);
 
         // Listed cars only; new rows continue after the existing identities.

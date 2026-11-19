@@ -144,7 +144,7 @@ public sealed class SetupAuthorityTests
         var carId = await AddCarAsync(app, admin, "00 YTK 01");
         var accounts = app.GetRequiredService<IAccountService>();
         var customer = Assert.Single(await accounts.GetAllAsync(admin, Ct), u => u.UserName == "musteri");
-        await accounts.UpdateAsync(admin, customer.Id, new AccountInput("musteri", "Yeni.Sifre12", customer.Email, customer.Phone, UserRole.User), Ct);
+        await accounts.UpdateAsync(admin, customer.Id, await AccountVersionAsync(app, customer.Id), new AccountInput("musteri", "Yeni.Sifre12", customer.Email, customer.Phone, UserRole.User), Ct);
         var session = await app.GetRequiredService<IAuthService>().SignInAsync("musteri", "Yeni.Sifre12", Ct);
         var receipt = await RentAsync(app, session, carId, startOffset: 1, days: 2);
         Assert.Equal(RentalEnding.Cancelled, await app.GetRequiredService<IRentalService>().EndAsync(session, receipt.RentalId, Ct));

@@ -157,7 +157,7 @@ public sealed class SqlServerMaintenanceTests
 
         var logging = bApp.GetRequiredService<IMaintenanceService>().AddAsync(bSession, carId, Input(database, 2, 2), Ct);
         await gate.WaitUntilReachedAsync(Ct);
-        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(founder, b, await AccountVersionAsync(a, b), new AccountInput("badmin", null, null, null, UserRole.User), Ct);
         gate.Release();
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => logging);

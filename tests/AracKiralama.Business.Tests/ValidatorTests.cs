@@ -226,7 +226,7 @@ public sealed class ValidatorTests
     [Fact]
     public void AccountChange_StoredValuesOutsideTodaysRules_AreKeptButNotNewOnes()
     {
-        var stored = new UserSummary(7, "Ali Veli", "eski adres", "0212 555 12", UserRole.User);
+        var stored = new UserSummary(7, "Ali Veli", "eski adres", "0212 555 12", UserRole.User, 0);
 
         var unchanged = AccountChangeInput.Create(new AccountInput(" Ali Veli ", null, "eski adres ", " 0212 555 12", UserRole.User), stored);
         Assert.True(TestValidators.AccountChange.Validate(unchanged).IsValid);
@@ -420,7 +420,7 @@ public sealed class ValidatorTests
         Assert.Empty(error.FieldErrors);
     }
 
-    private static UserSummary Stored() => new(7, "ornek", "ornek@example.com", "5551234567", UserRole.User);
+    private static UserSummary Stored() => new(7, "ornek", "ornek@example.com", "5551234567", UserRole.User, 0);
 
     private static CarInput ValidCar() =>
         new("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "34 ABC 123", "850,50", null, true);
