@@ -9,6 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Real car photographs: twelve common models (Renault Clio, Fiat Egea, Toyota Corolla, Volkswagen Golf, Dacia Duster,
+  Peugeot 2008, Tesla Model 3, Fiat 500, Ford Transit Custom, Volkswagen Touran, Mazda MX-5, Fiat Doblò) show a
+  photograph from Wikimedia Commons on the car cards, the booking screen, the rental cards and the admin panel,
+  matched by make and model. The photographs (CC0 and CC BY-SA, 640 pixels wide, about 650 KB together) are embedded
+  in the application and never downloaded; a car's own picture address still replaces them, and any other car keeps
+  the drawing. `docs/CREDITS.md` lists the author, license, source and changes of each one, and the READMEs link it
+  with a note that the project is not affiliated with any vehicle manufacturer. The release archive carries
+  `docs/CREDITS.md` and the license.
+- UI tests: every bundled photograph is credited in `docs/CREDITS.md`, stays within the size limits and is in the
+  catalog; makes and models are matched with case, accents, punctuation and trims; the photograph is drawn in the
+  light, dark and high contrast palettes and unknown models keep the drawing.
 - New design: an own visual identity of asphalt graphite and signal orange, a road and location pin logo
   (`assets/logo.svg`, rasterized into `app.ico` and `logo-256.png`), headings, prices, plates and calendar days in
   Bahnschrift, and every screen rebuilt on one frame with a header, an inline message strip, the content and a footer.
@@ -20,8 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   words, a pattern and a tint, with a ring around today.
 - Results and refusals appear inside the window instead of message boxes; questions use a themed message window.
   Refused fields get a danger border and their message as the accessible description.
-- `tools/Screenshots`: the icon and the README screenshots at 1x and 2x, drawn offscreen with an invented fleet; the
-  README shows fourteen screens.
+- `tools/Screenshots`: the icon and the README screenshots at 1x and 2x, drawn offscreen with a sample fleet of
+  common models and their bundled photographs; the README shows fourteen screens.
 - UI tests: every screen inside working areas of 1024x600, 1366x768 and 1920x1040 at text sizes 1 to 2 with long
   names, themed controls, tab order, inline messages, palette contrast and identity, high contrast and its switch while
   screens are open, card and calendar layout and the vehicle art.
@@ -65,6 +76,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The optional demo data adds the same kind of cars as the screenshots (Renault Clio, Fiat Egea, Ford Transit Custom,
+  Fiat 500 and Tesla Model 3) instead of made-up brands; it still adds no account. Car pictures are a little wider
+  (about 1.9 : 1) to match the photographs.
 - The application is per-monitor DPI aware; windows fit their content, never open larger than the screen's working
   area and scroll their body on a small screen.
 - Sign-up, the first admin, a password change and a booking close their window and the screen that opened them
