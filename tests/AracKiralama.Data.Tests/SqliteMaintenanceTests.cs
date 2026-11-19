@@ -97,6 +97,46 @@ public sealed class SqliteMaintenanceTests : IAsyncLifetime
         }
     }
 
+    /// <summary>Two active records cannot share a day of one car; touching records, a cancelled record and a record's own days are fine.</summary>
+    [Theory]
+    [InlineData(5, 3, false)]  // the same days
+    [InlineData(7, 2, false)]  // the last day
+    [InlineData(4, 2, false)]  // the first day
+    [InlineData(8, 2, true)]   // from the day the car is back
+    [InlineData(2, 3, true)]   // up to the first day
+    public async Task Add_OverAnotherActiveRecord_IsRefused(int startOffset, int days, bool allowed)
+    {
+        await Maintenance.AddAsync(_admin, CarId, Input(5, 3, "İlk kayıt"), Ct);
+
+        if (allowed)
+        {
+            await Maintenance.AddAsync(_admin, CarId, Input(startOffset, days), Ct);
+            Assert.Equal(2, (await Maintenance.GetForCarAsync(_admin, CarId, Ct)).Count);
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Maintenance.AddAsync(_admin, CarId, Input(startOffset, days), Ct));
+            Assert.Equal((MaintenanceService.OverlapsMaintenance, false), (error.Message, error.IsStale));
+            Assert.Single(await Maintenance.GetForCarAsync(_admin, CarId, Ct));
+        }
+    }
+
+    [Fact]
+    public async Task Update_OntoAnotherActiveRecord_IsRefusedButItsOwnDaysAndCancelledRecordsAreFree()
+    {
+        var first = await Maintenance.AddAsync(_admin, CarId, Input(5, 3, "Birinci"), Ct);
+        var second = await Maintenance.AddAsync(_admin, CarId, Input(10, 2, "İkinci"), Ct);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Maintenance.UpdateAsync(_admin, second, 1, Input(7, 2, "İkinci"), Ct));
+        Assert.Equal(MaintenanceService.OverlapsMaintenance, error.Message);
+
+        await Maintenance.UpdateAsync(_admin, second, 1, Input(9, 3, "İkinci"), Ct);
+        await Maintenance.CancelAsync(_admin, first, 1, Ct);
+        await Maintenance.UpdateAsync(_admin, second, 2, Input(5, 3, "İkinci"), Ct);
+        var again = await Assert.ThrowsAsync<BusinessRuleException>(() => Maintenance.AddAsync(_admin, CarId, Input(5, 3, "Üçüncü"), Ct));
+        Assert.Equal(MaintenanceService.OverlapsMaintenance, again.Message);
+    }
+
     [Fact]
     public async Task Add_OverACancelledRental_IsAllowed()
     {

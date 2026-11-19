@@ -48,6 +48,7 @@ internal sealed class MaintenanceService(
     internal const string NotFound = "Bakım kaydı bulunamadı veya iptal edilmiş.";
     internal const string ChangedElsewhere = "Bakım kaydı siz düzenlerken başka biri tarafından değiştirildi. Güncel hali yüklendi; lütfen değişikliğinizi yeniden yapın.";
     internal const string OverlapsRental = "Araç seçtiğiniz tarihlerin bir kısmında kiralanmış. Önce kiralamayı sonlandırın veya başka tarihler seçin.";
+    internal const string OverlapsMaintenance = "Araç seçtiğiniz tarihlerin bir kısmında zaten bakımda. Mevcut kaydı güncelleyin veya başka tarihler seçin.";
 
     public async Task<IReadOnlyList<MaintenanceRecord>> GetForCarAsync(UserSession session, int carId, CancellationToken cancellationToken = default)
     {
@@ -114,6 +115,7 @@ internal sealed class MaintenanceService(
         {
             MaintenanceOutcome.CarNotFound => new BusinessRuleException(CarNotFound),
             MaintenanceOutcome.OverlapsRental => new BusinessRuleException(OverlapsRental),
+            MaintenanceOutcome.OverlapsMaintenance => new BusinessRuleException(OverlapsMaintenance),
             MaintenanceOutcome.ChangedElsewhere => BusinessRuleException.Stale(ChangedElsewhere),
             _ => BusinessRuleException.Stale(NotFound),
         };

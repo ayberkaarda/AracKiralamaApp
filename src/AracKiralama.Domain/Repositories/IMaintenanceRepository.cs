@@ -13,14 +13,14 @@ public interface IMaintenanceRepository
 
     /// <summary>
     /// Stores an active record for <paramref name="carId"/>, stamped with the database's clock read after the
-    /// car's lock was granted, unless an active rental of the car shares a day with its range.
+    /// car's lock was granted, unless an active rental or another active record of the car shares a day with its range.
     /// </summary>
     /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
     Task<MaintenanceWriteResult> AddAsync(Actor admin, int carId, MaintenanceValues values, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes an active record to <paramref name="changed"/>, only while its stored version is still
-    /// <paramref name="expectedVersion"/> and no active rental of the car shares a day with the new range.
+    /// <paramref name="expectedVersion"/> and no active rental or other active record of the car shares a day with the new range.
     /// </summary>
     /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
     Task<MaintenanceWriteResult> UpdateAsync(
@@ -53,6 +53,9 @@ public enum MaintenanceOutcome
 
     /// <summary>An active rental of the car shares at least one day with the range; nothing was written.</summary>
     OverlapsRental = 4,
+
+    /// <summary>Another active maintenance record of the car shares at least one day with the range; nothing was written.</summary>
+    OverlapsMaintenance = 5,
 }
 
 /// <summary>Outcome of a maintenance write, with the record's id and its version after the write.</summary>

@@ -41,6 +41,11 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
             return new MaintenanceWriteResult(MaintenanceOutcome.OverlapsRental);
         }
 
+        if (await OverlapsAsync(db, carId, values.StartDate, values.EndDate, cancellationToken).ConfigureAwait(false))
+        {
+            return new MaintenanceWriteResult(MaintenanceOutcome.OverlapsMaintenance);
+        }
+
         // Stamped after the lock was granted, inside the transaction, so the time is the write's own.
         var nowUtc = await DatabaseClock.ReadAsync(db, timeProvider, cancellationToken).ConfigureAwait(false);
         var record = new MaintenanceRecord
@@ -81,6 +86,12 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
         if (await RentalRepository.OverlapsAsync(db, carId, changed.StartDate, changed.EndDate, cancellationToken).ConfigureAwait(false))
         {
             return await RefusalAsync(db, recordId, expectedVersion, MaintenanceOutcome.OverlapsRental, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Another active record of the car on these days; the record itself may keep its own days.
+        if (await OverlapsAsync(db, carId, changed.StartDate, changed.EndDate, cancellationToken, exceptRecordId: recordId).ConfigureAwait(false))
+        {
+            return await RefusalAsync(db, recordId, expectedVersion, MaintenanceOutcome.OverlapsMaintenance, cancellationToken).ConfigureAwait(false);
         }
 
         // The WHERE clause is the final decision: a record cancelled or changed since the form loaded it
@@ -139,11 +150,11 @@ internal sealed class MaintenanceRepository(IDbContextFactory<AracDbContext> con
 
     /// <summary>
     /// Whether an active maintenance record of the car shares a day with [<paramref name="start"/>,
-    /// <paramref name="end"/>). Touching ranges do not overlap.
+    /// <paramref name="end"/>), other than <paramref name="exceptRecordId"/>. Touching ranges do not overlap.
     /// </summary>
-    internal static Task<bool> OverlapsAsync(AracDbContext db, int carId, DateOnly start, DateOnly end, CancellationToken cancellationToken) =>
+    internal static Task<bool> OverlapsAsync(AracDbContext db, int carId, DateOnly start, DateOnly end, CancellationToken cancellationToken, int? exceptRecordId = null) =>
         db.Maintenance.AnyAsync(
-            m => m.CarId == carId && m.Status == MaintenanceStatus.Active && m.StartDate < end && start < m.EndDate,
+            m => m.CarId == carId && m.Status == MaintenanceStatus.Active && m.StartDate < end && start < m.EndDate && (exceptRecordId == null || m.Id != exceptRecordId),
             cancellationToken);
 
     /// <summary>
