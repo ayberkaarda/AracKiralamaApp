@@ -55,7 +55,7 @@ internal sealed class CarService(
     internal const string NotFound = "Araç bulunamadı.";
     internal const string InputInvalid = "Lütfen gerekli alanları doldurun.";
     internal const string PlateTaken = "Bu plaka ile kayıtlı bir araç zaten mevcut.";
-    internal const string HasRentals = "Kiralama geçmişi olan araç silinemez. Kiralamaya kapatmak için \"Kiralamaya açık\" seçeneğini kaldırın.";
+    internal const string HasRentals = "Kiralama veya bakım geçmişi olan araç silinemez. Kiralamaya kapatmak için \"Kiralamaya açık\" seçeneğini kaldırın.";
 
     public async Task<IReadOnlyList<Car>> GetCatalogAsync(UserSession session, CarFilter filter, CancellationToken cancellationToken = default)
     {

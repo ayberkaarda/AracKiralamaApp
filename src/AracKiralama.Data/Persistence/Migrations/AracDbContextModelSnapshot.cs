@@ -106,6 +106,77 @@ namespace AracKiralama.Data.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AracKiralama.Domain.Entities.MaintenanceRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("BakimID");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CarId")
+                        .HasColumnType("int")
+                        .HasColumnName("AracID");
+
+                    b.Property<decimal>("Cost")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)")
+                        .HasColumnName("Maliyet");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("OlusturmaZamani");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("Aciklama");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("BitisTarihi");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int")
+                        .HasColumnName("Tur");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("BaslangicTarihi");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int")
+                        .HasColumnName("Durum");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("GuncellemeZamani");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int")
+                        .HasColumnName("Surum");
+
+                    b.HasKey("Id")
+                        .HasName("PK_AracBakim");
+
+                    b.HasIndex(new[] { "CarId", "StartDate" }, "IX_AracBakim_AracID_BaslangicTarihi");
+
+                    b.ToTable("AracBakim", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AracBakim_Durum", "[Durum] IN (0, 1)");
+
+                            t.HasCheckConstraint("CK_AracBakim_Maliyet", "[Maliyet] >= 0");
+
+                            t.HasCheckConstraint("CK_AracBakim_Surum", "[Surum] >= 1");
+
+                            t.HasCheckConstraint("CK_AracBakim_Tarih", "[BitisTarihi] > [BaslangicTarihi]");
+
+                            t.HasCheckConstraint("CK_AracBakim_Tur", "[Tur] IN (0, 1)");
+                        });
+                });
+
             modelBuilder.Entity("AracKiralama.Domain.Entities.Rental", b =>
                 {
                     b.Property<int>("Id")
@@ -283,6 +354,16 @@ namespace AracKiralama.Data.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_Kullanicilar_SifreBicimi", "[SifreBicimi] IN (0, 1)");
                         });
+                });
+
+            modelBuilder.Entity("AracKiralama.Domain.Entities.MaintenanceRecord", b =>
+                {
+                    b.HasOne("AracKiralama.Domain.Entities.Car", null)
+                        .WithMany()
+                        .HasForeignKey("CarId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_AracBakim_Araclar");
                 });
 
             modelBuilder.Entity("AracKiralama.Domain.Entities.Rental", b =>

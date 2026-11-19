@@ -122,7 +122,8 @@ internal sealed class CarRepository(IDbContextFactory<AracDbContext> contextFact
             return CarDeleteOutcome.NotFound;
         }
 
-        if (await db.Rentals.AnyAsync(r => r.CarId == carId, cancellationToken).ConfigureAwait(false))
+        if (await db.Rentals.AnyAsync(r => r.CarId == carId, cancellationToken).ConfigureAwait(false)
+            || await db.Maintenance.AnyAsync(m => m.CarId == carId, cancellationToken).ConfigureAwait(false))
         {
             return CarDeleteOutcome.HasRentals;
         }

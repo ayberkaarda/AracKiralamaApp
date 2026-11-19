@@ -28,7 +28,7 @@ public interface ICarRepository
     /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
     Task<CarUpdateOutcome> UpdateAsync(Actor admin, Car car, CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes a car that has never been rented, under the car's lock.</summary>
+    /// <summary>Deletes a car that has never been rented nor maintained, under the car's lock.</summary>
     /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
     Task<CarDeleteOutcome> DeleteAsync(Actor admin, int carId, CancellationToken cancellationToken = default);
 }
@@ -44,7 +44,7 @@ public enum CarDeleteOutcome
     Deleted = 0,
     NotFound = 1,
 
-    /// <summary>The car has rentals, active or past; their history keeps the car.</summary>
+    /// <summary>The car has rentals or maintenance records, current or past; their history keeps the car.</summary>
     HasRentals = 2,
 }
 

@@ -5,7 +5,7 @@ namespace AracKiralama.Data.Persistence;
 
 /// <summary>
 /// EF Core context of the car rental database. Table and column names follow the original schema
-/// (Kullanicilar, Araclar, Kiralama) and its Turkish naming for the new parts, so an existing database
+/// (Kullanicilar, Araclar, Kiralama) and its Turkish naming for the new parts (KurulumAnahtarlari, AracBakim), so an existing database
 /// keeps its tables; the code itself uses English names.
 /// </summary>
 public sealed class AracDbContext(DbContextOptions<AracDbContext> options) : DbContext(options)
@@ -17,6 +17,8 @@ public sealed class AracDbContext(DbContextOptions<AracDbContext> options) : DbC
     public DbSet<Rental> Rentals => Set<Rental>();
 
     public DbSet<SetupKey> SetupKeys => Set<SetupKey>();
+
+    public DbSet<MaintenanceRecord> Maintenance => Set<MaintenanceRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
