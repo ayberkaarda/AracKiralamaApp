@@ -112,7 +112,7 @@ public sealed class ReportAndCalendarTests
             new(new DateOnly(2026, 3, 6), new DateOnly(2026, 3, 8), BlockKind.Rental),
         ];
 
-        var days = AvailabilityService.Build(first, first.AddMonths(1), Today, blocked);
+        var days = AvailabilityService.Build(first, first.AddMonths(1), Today, blocked, showPast: true);
 
         Assert.Equal(31, days.Count);
         Assert.Equal(DayState.Booked, days[0].State);      // 1 March: past but rented
@@ -124,12 +124,36 @@ public sealed class ReportAndCalendarTests
         Assert.Equal(new DateOnly(2026, 3, 31), days[^1].Date);
     }
 
+    /// <summary>
+    /// A rental under way since 27 February: the admin sees its past days as booked, a customer sees every
+    /// day before today as past and only the days still taken as booked.
+    /// </summary>
+    [Theory]
+    [InlineData(true, DayState.Booked)]
+    [InlineData(false, DayState.Past)]
+    public async Task Calendar_PastDaysOfACurrentRental_AreShownToAdminsOnly(bool admin, DayState firstOfMarch)
+    {
+        var cars = new Mock<ICarRepository>(MockBehavior.Strict);
+        cars.Setup(c => c.FindAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(new Car { Id = 1, IsListed = true });
+        var rentals = new Mock<IRentalRepository>(MockBehavior.Strict);
+        rentals.Setup(r => r.GetBlockedRangesAsync(1, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new BlockedRange(new DateOnly(2026, 2, 27), new DateOnly(2026, 3, 4), BlockKind.Rental), new BlockedRange(new DateOnly(2026, 2, 20), new DateOnly(2026, 2, 27), BlockKind.Maintenance)]);
+        var service = new AvailabilityService(cars.Object, rentals.Object, Guard(), _time, new TestDatabaseClock(_time));
+
+        var days = (await service.GetCalendarAsync(admin ? Sessions.Admin : Sessions.User, 1, Today, Ct)).Days;
+
+        Assert.Equal(firstOfMarch, days[0].State);
+        Assert.Equal(DayState.Booked, days[1].State); // today
+        Assert.Equal(DayState.Booked, days[2].State);
+        Assert.Equal(DayState.Free, days[3].State);
+    }
+
     [Fact]
     public void Calendar_FreeDaysBeforeToday_ArePast()
     {
         var first = new DateOnly(2026, 2, 1);
 
-        var days = AvailabilityService.Build(first, first.AddMonths(1), Today, []);
+        var days = AvailabilityService.Build(first, first.AddMonths(1), Today, [], showPast: true);
 
         Assert.Equal(28, days.Count);
         Assert.All(days, d => Assert.Equal(DayState.Past, d.State));

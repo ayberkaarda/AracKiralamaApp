@@ -69,19 +69,27 @@ internal sealed class AvailabilityService(
 
         var next = first.AddMonths(1);
         var blocked = await rentals.GetBlockedRangesAsync(carId, first, next, cancellationToken).ConfigureAwait(false);
-        return new CarCalendar(carId, first, today, Build(first, next, today, blocked));
+        return new CarCalendar(carId, first, today, Build(first, next, today, blocked, showPast: role == UserRole.Admin));
     }
 
     /// <summary>
     /// The states of [<paramref name="first"/>, <paramref name="next"/>): maintenance wins over a rental
-    /// (both cannot be active on one day, but old data may disagree), a rental over a past day.
+    /// (both cannot be active on one day, but old data may disagree). With <paramref name="showPast"/> (an
+    /// admin) a rental or maintenance also wins over a past day; customers see every day before today as past,
+    /// so they cannot tell since when someone has had a car, only which days are still taken.
     /// </summary>
-    internal static IReadOnlyList<CalendarDay> Build(DateOnly first, DateOnly next, DateOnly today, IReadOnlyList<BlockedRange> blocked)
+    internal static IReadOnlyList<CalendarDay> Build(DateOnly first, DateOnly next, DateOnly today, IReadOnlyList<BlockedRange> blocked, bool showPast)
     {
         var days = new List<CalendarDay>(31);
         for (var day = first; day < next; day = day.AddDays(1))
         {
             var state = day < today ? DayState.Past : DayState.Free;
+            if (state == DayState.Past && !showPast)
+            {
+                days.Add(new CalendarDay(day, state));
+                continue;
+            }
+
             foreach (var range in blocked)
             {
                 if (range.StartDate <= day && day < range.EndDate)
