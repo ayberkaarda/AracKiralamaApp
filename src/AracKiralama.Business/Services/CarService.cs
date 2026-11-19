@@ -94,7 +94,7 @@ internal sealed class CarService(
         var car = Validate(input, stored: null);
         try
         {
-            var id = await access.WriteAsActorAsync(session, () => cars.AddAsync(session.UserId, car, cancellationToken)).ConfigureAwait(false);
+            var id = await access.WriteAsActorAsync(session, () => cars.AddAsync(session.Actor, car, cancellationToken)).ConfigureAwait(false);
             audit.Record(AuditEvent.CarChanged, AuditRole.Admin);
             return id;
         }
@@ -115,7 +115,7 @@ internal sealed class CarService(
         CarUpdateOutcome outcome;
         try
         {
-            outcome = await access.WriteAsActorAsync(session, () => cars.UpdateAsync(session.UserId, car, cancellationToken)).ConfigureAwait(false);
+            outcome = await access.WriteAsActorAsync(session, () => cars.UpdateAsync(session.Actor, car, cancellationToken)).ConfigureAwait(false);
         }
         catch (DuplicatePlateException ex)
         {
@@ -133,7 +133,7 @@ internal sealed class CarService(
     public async Task DeleteAsync(UserSession session, int carId, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
-        var outcome = await access.WriteAsActorAsync(session, () => cars.DeleteAsync(session.UserId, carId, cancellationToken)).ConfigureAwait(false);
+        var outcome = await access.WriteAsActorAsync(session, () => cars.DeleteAsync(session.Actor, carId, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case CarDeleteOutcome.Deleted:

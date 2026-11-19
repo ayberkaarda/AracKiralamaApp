@@ -237,6 +237,37 @@ public sealed class SqlServerConcurrencyTests
     }
 
     /// <summary>
+    /// Admin B's car change waits at the car's lock while the founder demotes B and promotes B again. B is
+    /// an admin again when the change gets the lock, but its session is from before the change: the write
+    /// checks the session version inside its transaction and changes nothing.
+    /// </summary>
+    [Fact]
+    public async Task UpdateCar_ByAnAdminDemotedAndPromotedAgainMeanwhile_IsRefused()
+    {
+        await using var database = await SqlServerTestDatabase.ReserveAsync(Ct);
+        await using var a = database.BuildServices();
+        await a.GetRequiredService<IDatabaseInitializer>().InitializeAsync(Ct);
+        var founder = await SetUpAdminAsync(a);
+        var accounts = a.GetRequiredService<IAccountService>();
+        var b = await accounts.AddAsync(founder, new AccountInput("badmin", Password, null, null, UserRole.Admin), Ct);
+        var bSession = await a.GetRequiredService<IAuthService>().SignInAsync("badmin", Password, Ct);
+        var carId = await AddCarAsync(a, founder, "00 SRM 01");
+        var gate = CommandGate.BeforeAppLock("AracKiralama.Car." + carId.ToString(CultureInfo.InvariantCulture));
+        await using var bApp = database.BuildServices(configureContext: o => o.AddInterceptors(gate));
+
+        var changing = bApp.GetRequiredService<ICarService>().UpdateAsync(
+            bSession, carId, new CarInput("Anka", "Deneme", "2022", "Manuel", "Benzin", "1000", "Gri", "00 SRM 01", "1", null, true), Ct);
+        await gate.WaitUntilReachedAsync(Ct);
+        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(founder, b, new AccountInput("badmin", null, null, null, UserRole.Admin), Ct);
+        gate.Release();
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => changing);
+        Assert.Equal(100, await database.ScalarAsync("SELECT CAST(GunlukUcret AS int) FROM dbo.Araclar WHERE AracID = @id", Ct, ("@id", carId)));
+        Assert.Equal(2, await database.ScalarAsync("SELECT OturumSurumu FROM dbo.Kullanicilar WHERE KullaniciID = @id", Ct, ("@id", b)));
+    }
+
+    /// <summary>
     /// A cancellation holds the car's lock, just before its UPDATE, when another customer books days
     /// that the cancelled rental held. The booking waits for the cancellation instead of deciding on the
     /// old days, and then gets them.

@@ -15,7 +15,7 @@ public sealed class AccountServiceTests
 
     public AccountServiceTests()
     {
-        _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.Admin);
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.Admin, 0));
 
         // By default the stored account has the values of Valid.
         _users.Setup(u => u.GetSummaryAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -45,7 +45,7 @@ public sealed class AccountServiceTests
     [InlineData(null)]
     public async Task DemotedAdminSession_CannotManageAccounts(UserRole? storedRole)
     {
-        _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(storedRole);
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(storedRole is { } role ? new SessionState(role, 0) : null);
         var service = Service();
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.GetAllAsync(Sessions.Admin, Ct));
@@ -69,7 +69,7 @@ public sealed class AccountServiceTests
     public async Task Update_WithoutPassword_KeepsTheStoredOne()
     {
         _users.Setup(u => u.FindTakenAsync("yeni", "yeni@example.com", "5550000009", 4, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, new AccountUpdate(4, "yeni", "yeni@example.com", "5550000009", UserRole.Admin, null), It.IsAny<CancellationToken>()))
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, new AccountUpdate(4, "yeni", "yeni@example.com", "5550000009", UserRole.Admin, null), It.IsAny<CancellationToken>()))
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
         await Service().UpdateAsync(Sessions.Admin, 4, Valid with { Password = "", Role = UserRole.Admin }, Ct);
@@ -87,8 +87,8 @@ public sealed class AccountServiceTests
         string? hash = null;
         Stored(6, "eski kullanici", null, null);
         _users.Setup(u => u.FindTakenAsync("eski kullanici", null, null, 6, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.Is<AccountUpdate>(a => a.UserId == 6 && a.Email == null && a.Phone == null), It.IsAny<CancellationToken>()))
-            .Callback<int, AccountUpdate, CancellationToken>((_, update, _) => hash = update.NewPasswordHash)
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.Is<AccountUpdate>(a => a.UserId == 6 && a.Email == null && a.Phone == null), It.IsAny<CancellationToken>()))
+            .Callback<Actor, AccountUpdate, CancellationToken>((_, update, _) => hash = update.NewPasswordHash)
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
         await Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski kullanici", "Yeni.Sifre12", " ", "", UserRole.User), Ct);
@@ -107,8 +107,8 @@ public sealed class AccountServiceTests
         AccountUpdate? sent = null;
         Stored(6, "eski", "eski@@ornek", "(555)1234567");
         _users.Setup(u => u.FindTakenAsync("eski", "eski@@ornek", "(555)1234567", 6, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()))
-            .Callback<int, AccountUpdate, CancellationToken>((_, update, _) => sent = update)
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()))
+            .Callback<Actor, AccountUpdate, CancellationToken>((_, update, _) => sent = update)
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
         await Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski", "Yeni.Sifre12", "eski@@ornek", "(555)1234567", UserRole.User), Ct);
@@ -124,7 +124,7 @@ public sealed class AccountServiceTests
             () => Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski", null, "yeni@@ornek", "(555)1234567", UserRole.User), Ct));
         Assert.Equal(AccountRules.PhoneInvalid, phone.Message);
         Assert.Equal(AccountRules.EmailInvalid, email.Message);
-        _users.Verify(u => u.UpdateAsync(It.IsAny<int>(), It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()), Times.Once);
+        _users.Verify(u => u.UpdateAsync(It.IsAny<Actor>(), It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>An account may keep a name of the original data, but a new name follows the rules.</summary>
@@ -140,7 +140,7 @@ public sealed class AccountServiceTests
             () => Service().UpdateAsync(Sessions.Admin, 6, new AccountInput(newName, null, null, null, UserRole.User), Ct));
 
         Assert.Equal(AccountRules.UserNameInvalid, error.Message);
-        _users.Verify(u => u.UpdateAsync(It.IsAny<int>(), It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()), Times.Never);
+        _users.Verify(u => u.UpdateAsync(It.IsAny<Actor>(), It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -166,8 +166,8 @@ public sealed class AccountServiceTests
     {
         string? hash = null;
         _users.Setup(u => u.FindTakenAsync("yeni", "yeni@example.com", "5550000009", 4, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()))
-            .Callback<int, AccountUpdate, CancellationToken>((_, update, _) => hash = update.NewPasswordHash)
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()))
+            .Callback<Actor, AccountUpdate, CancellationToken>((_, update, _) => hash = update.NewPasswordHash)
             .ReturnsAsync(AccountUpdateOutcome.Updated);
 
         await Service().UpdateAsync(Sessions.Admin, 4, Valid, Ct);
@@ -179,7 +179,7 @@ public sealed class AccountServiceTests
     public async Task Update_LastAdmin_KeepsTheRole()
     {
         _users.Setup(u => u.FindTakenAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), 1, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccountUpdateOutcome.LastAdmin);
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccountUpdateOutcome.LastAdmin);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 1, Valid with { Password = null }, Ct));
 
@@ -192,7 +192,7 @@ public sealed class AccountServiceTests
     [InlineData(AccountDeleteOutcome.NotFound, AccountService.NotFound)]
     public async Task Delete_RefusedByTheRepository_BecomesARuleMessage(AccountDeleteOutcome outcome, string message)
     {
-        _users.Setup(u => u.DeleteAsync(Sessions.Admin.UserId, 5, It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
+        _users.Setup(u => u.DeleteAsync(Sessions.Admin.Actor, 5, It.IsAny<CancellationToken>())).ReturnsAsync(outcome);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().DeleteAsync(Sessions.Admin, 5, Ct));
 
@@ -207,9 +207,9 @@ public sealed class AccountServiceTests
     public async Task Write_ByAnAdminDemotedBeforeTheWrite_IsDenied()
     {
         _users.Setup(u => u.FindTakenAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
-        _users.Setup(u => u.AddAsync(It.IsAny<User>(), Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
-        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
-        _users.Setup(u => u.DeleteAsync(Sessions.Admin.UserId, 5, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+        _users.Setup(u => u.AddAsync(It.IsAny<User>(), Sessions.Admin.Actor, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
+        _users.Setup(u => u.DeleteAsync(Sessions.Admin.Actor, 5, It.IsAny<CancellationToken>())).ThrowsAsync(new ActorRevokedException());
         var service = Service();
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => service.AddAsync(Sessions.Admin, Valid with { Role = UserRole.Admin }, Ct));
@@ -232,7 +232,7 @@ public sealed class AccountServiceTests
 
     private void AssertOnlyRoleChecks()
     {
-        _users.Verify(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>()), Times.AtLeastOnce());
+        _users.Verify(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>()), Times.AtLeastOnce());
         _users.VerifyNoOtherCalls();
     }
 

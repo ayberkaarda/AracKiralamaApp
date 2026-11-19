@@ -20,8 +20,8 @@ public sealed class RentalServiceTests
 
     public RentalServiceTests()
     {
-        _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.Admin);
-        _users.Setup(u => u.GetRoleAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.User);
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.Admin, 0));
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.User, 0));
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -148,7 +148,7 @@ public sealed class RentalServiceTests
     [Fact]
     public async Task End_ByADemotedAdmin_IsLimitedToTheirOwnRentals()
     {
-        _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.User);
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.User, 0));
         _rentals.Setup(r => r.EndAsync(9, new RentalActor(Sessions.Admin.UserId, AsAdmin: false), Today, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new EndRentalResult(EndRentalOutcome.NotFound));
 

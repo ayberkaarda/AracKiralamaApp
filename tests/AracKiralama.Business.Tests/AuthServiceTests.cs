@@ -173,7 +173,7 @@ public sealed class AuthServiceTests
         User? stored = null;
         _users.Setup(u => u.FindTakenAsync("yeni", "a@example.com", "5551234567", null, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
         _users.Setup(u => u.AddAsync(It.IsAny<User>(), null, It.IsAny<CancellationToken>()))
-            .Callback<User, int?, CancellationToken>((user, _, _) => stored = user)
+            .Callback<User, Actor?, CancellationToken>((user, _, _) => stored = user)
             .ReturnsAsync(9);
 
         await Service().RegisterAsync(" yeni ", Password, " a@example.com ", "555 123 4567", Ct);

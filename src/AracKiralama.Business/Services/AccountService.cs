@@ -65,7 +65,7 @@ internal sealed class AccountService(
                 Email = email,
                 Phone = phone,
             };
-            var id = await access.WriteAsActorAsync(session, () => users.AddAsync(user, session.UserId, cancellationToken)).ConfigureAwait(false);
+            var id = await access.WriteAsActorAsync(session, () => users.AddAsync(user, session.Actor, cancellationToken)).ConfigureAwait(false);
             audit.Record(AuditEvent.AccountChanged, AuditRole.Admin);
             return id;
         }
@@ -95,7 +95,7 @@ internal sealed class AccountService(
         try
         {
             var update = new AccountUpdate(userId, name, email, phone, input.Role, newHash);
-            outcome = await access.WriteAsActorAsync(session, () => users.UpdateAsync(session.UserId, update, cancellationToken)).ConfigureAwait(false);
+            outcome = await access.WriteAsActorAsync(session, () => users.UpdateAsync(session.Actor, update, cancellationToken)).ConfigureAwait(false);
         }
         catch (DuplicateAccountException ex)
         {
@@ -117,7 +117,7 @@ internal sealed class AccountService(
     public async Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
-        var outcome = await access.WriteAsActorAsync(session, () => users.DeleteAsync(session.UserId, userId, cancellationToken)).ConfigureAwait(false);
+        var outcome = await access.WriteAsActorAsync(session, () => users.DeleteAsync(session.Actor, userId, cancellationToken)).ConfigureAwait(false);
         switch (outcome)
         {
             case AccountDeleteOutcome.Deleted:

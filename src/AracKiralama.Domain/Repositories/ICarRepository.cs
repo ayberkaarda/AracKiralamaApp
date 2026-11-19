@@ -20,17 +20,17 @@ public interface ICarRepository
 
     /// <summary>Stores a new car and returns its id.</summary>
     /// <exception cref="DuplicatePlateException">Another car has the plate.</exception>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<int> AddAsync(int adminId, Car car, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<int> AddAsync(Actor admin, Car car, CancellationToken cancellationToken = default);
 
     /// <summary>Changes a car's details under the car's lock.</summary>
     /// <exception cref="DuplicatePlateException">Another car has the plate.</exception>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<CarUpdateOutcome> UpdateAsync(int adminId, Car car, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<CarUpdateOutcome> UpdateAsync(Actor admin, Car car, CancellationToken cancellationToken = default);
 
     /// <summary>Deletes a car that has never been rented, under the car's lock.</summary>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<CarDeleteOutcome> DeleteAsync(int adminId, int carId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<CarDeleteOutcome> DeleteAsync(Actor admin, int carId, CancellationToken cancellationToken = default);
 }
 
 public enum CarUpdateOutcome

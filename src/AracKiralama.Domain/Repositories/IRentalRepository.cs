@@ -32,14 +32,18 @@ public interface IRentalRepository
     Task<IReadOnlyList<BookedRange>> GetBookedRangesAsync(int carId, DateOnly from, CancellationToken cancellationToken = default);
 }
 
-/// <summary>A rental to store; the price was computed from <see cref="ExpectedDailyPrice"/>.</summary>
+/// <summary>
+/// A rental to store for account <see cref="UserId"/>, whose session carries <see cref="SessionVersion"/>;
+/// the price was computed from <see cref="ExpectedDailyPrice"/>.
+/// </summary>
 public sealed record RentalRequest(
     int CarId,
     int UserId,
     DateOnly StartDate,
     DateOnly EndDate,
     decimal ExpectedDailyPrice,
-    decimal Price);
+    decimal Price,
+    int SessionVersion = 0);
 
 public enum RentOutcome
 {

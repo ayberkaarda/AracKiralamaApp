@@ -219,6 +219,54 @@ public sealed class SqliteServiceTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// An admin demoted and promoted again keeps the role, but the session from before the change stays
+    /// closed for good; only a new sign-in works again.
+    /// </summary>
+    [Fact]
+    public async Task DemotedAndPromotedAgain_OldSessionStaysClosed()
+    {
+        var accounts = _db.Get<IAccountService>();
+        var second = await accounts.AddAsync(_admin, new AccountInput("ikinci", Password, null, null, UserRole.Admin), Ct);
+        var old = await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct);
+
+        await accounts.UpdateAsync(_admin, second, new AccountInput("ikinci", null, null, null, UserRole.User), Ct);
+        await accounts.UpdateAsync(_admin, second, new AccountInput("ikinci", null, null, null, UserRole.Admin), Ct);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => AddCarAsync(_db.Services, old, "00 SRM 01"));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => accounts.GetAllAsync(old, Ct));
+        var fresh = await _db.Get<IAuthService>().SignInAsync("ikinci", Password, Ct);
+        Assert.Equal(2, fresh.SessionVersion);
+        Assert.True(await AddCarAsync(_db.Services, fresh, "00 SRM 02") > 0);
+    }
+
+    /// <summary>A password an admin sets ends the account's open sessions; a change of only the contact data does not.</summary>
+    [Fact]
+    public async Task PasswordSetByAnAdmin_EndsTheAccountsSessions()
+    {
+        var accounts = _db.Get<IAccountService>();
+        await accounts.UpdateAsync(_admin, _customer.UserId, new AccountInput("ornek", null, "yeni@example.com", "5540000001", UserRole.User), Ct);
+        Assert.Empty(await _db.Get<IRentalService>().GetMyActiveRentalsAsync(_customer, Ct));
+
+        await accounts.UpdateAsync(_admin, _customer.UserId, new AccountInput("ornek", "Yeni.Sifre123", "yeni@example.com", "5540000001", UserRole.User), Ct);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => _db.Get<IRentalService>().GetMyActiveRentalsAsync(_customer, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => RentAsync(_db.Services, _customer, CarId, startOffset: 1));
+        await using var db = _db.CreateContext();
+        Assert.Equal(0, await db.Rentals.CountAsync(Ct));
+    }
+
+    /// <summary>A sign-in verified before a role change cannot issue a session with the old version.</summary>
+    [Fact]
+    public async Task SignIn_RecordedAfterARoleChange_IsRefused()
+    {
+        var users = _db.Get<IUserRepository>();
+        var verified = (await users.FindByUserNameAsync("ornek", Ct))!;
+        await _db.Get<IAccountService>().UpdateAsync(_admin, _customer.UserId, new AccountInput("ornek", null, "ornek@example.com", "5540000001", UserRole.Admin), Ct);
+
+        Assert.False(await users.RecordSuccessfulLoginAsync(verified, Start.UtcDateTime, null, Ct));
+    }
+
+    /// <summary>
     /// Every repository write checks the acting account itself, whatever the service checked before:
     /// a customer's id acting as an admin, or an account that does not exist, is refused and nothing is
     /// written.
@@ -231,17 +279,18 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         var rentals = _db.Get<IRentalRepository>();
         var receipt = await RentAsync(_db.Services, _customer, CarId, startOffset: 1);
         var customer = _customer.UserId;
+        var asCustomer = _customer.Actor;
         var car = (await cars.FindAsync(CarId, Ct))!;
         car.DailyPrice = 1m;
         var newcomer = new User { UserName = "yeni", PasswordHash = "x", Role = UserRole.Admin };
         List<Func<Task>> refused =
         [
-            () => users.AddAsync(newcomer, customer, Ct),
-            () => users.UpdateAsync(customer, new AccountUpdate(customer, "ornek", null, null, UserRole.Admin, null), Ct),
-            () => users.DeleteAsync(customer, _admin.UserId, Ct),
-            () => cars.AddAsync(customer, new Car { Brand = "A", Model = "B", Year = 2020, Transmission = "Manuel", FuelType = "Benzin", Color = "Gri", Plate = "00 YOK 01", DailyPrice = 1m }, Ct),
-            () => cars.UpdateAsync(customer, car, Ct),
-            () => cars.DeleteAsync(customer, OtherCarId, Ct),
+            () => users.AddAsync(newcomer, asCustomer, Ct),
+            () => users.UpdateAsync(asCustomer, new AccountUpdate(customer, "ornek", null, null, UserRole.Admin, null), Ct),
+            () => users.DeleteAsync(asCustomer, _admin.UserId, Ct),
+            () => cars.AddAsync(asCustomer, new Car { Brand = "A", Model = "B", Year = 2020, Transmission = "Manuel", FuelType = "Benzin", Color = "Gri", Plate = "00 YOK 01", DailyPrice = 1m }, Ct),
+            () => cars.UpdateAsync(asCustomer, car, Ct),
+            () => cars.DeleteAsync(asCustomer, OtherCarId, Ct),
             () => rentals.EndAsync(receipt.RentalId, new RentalActor(customer, AsAdmin: true), Today, Ct),
             () => rentals.EndAsync(receipt.RentalId, new RentalActor(999, AsAdmin: false), Today, Ct),
         ];

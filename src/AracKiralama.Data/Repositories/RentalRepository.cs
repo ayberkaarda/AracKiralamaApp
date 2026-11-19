@@ -22,6 +22,9 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         // can run between the checks below and the commit.
         await Locks.CarAsync(db, request.CarId, cancellationToken).ConfigureAwait(false);
 
+        // The renter's account must still exist with the session it booked from.
+        await Actors.RequireAsync(db, new Actor(request.UserId, request.SessionVersion), admin: false, cancellationToken).ConfigureAwait(false);
+
         var car = await db.Cars
             .AsNoTracking()
             .Where(c => c.Id == request.CarId)
@@ -86,7 +89,7 @@ internal sealed class RentalRepository(IDbContextFactory<AracDbContext> contextF
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         // Checked first, so an account that lost the admin role learns nothing about other accounts' rentals.
-        await Actors.RequireAsync(db, actor.UserId, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
+        await Actors.RequireAsync(db, actor.Actor, actor.AsAdmin, cancellationToken).ConfigureAwait(false);
         int? ownerId = actor.AsAdmin ? null : actor.UserId;
 
         // The car decides which lock to take; a rental of another account is the same as none.

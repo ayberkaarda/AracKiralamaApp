@@ -121,7 +121,7 @@ internal sealed class AuthService(
         }
 
         audit.Record(AuditEvent.SignInSucceeded, role);
-        return new UserSession(account.Id, account.UserName, account.Role);
+        return new UserSession(account.Id, account.UserName, account.Role, account.SessionVersion);
     }
 
     public async Task RegisterAsync(
@@ -155,7 +155,7 @@ internal sealed class AuthService(
 
         try
         {
-            await users.AddAsync(user, adminId: null, cancellationToken).ConfigureAwait(false);
+            await users.AddAsync(user, admin: null, cancellationToken).ConfigureAwait(false);
         }
         catch (DuplicateAccountException ex)
         {

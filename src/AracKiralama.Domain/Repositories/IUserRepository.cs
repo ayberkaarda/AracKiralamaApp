@@ -10,11 +10,11 @@ public interface IUserRepository
     Task<AccountCredentials?> FindByIdAsync(int userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The account's role as stored now, or <see langword="null"/> when the account no longer exists.
-    /// The services ask for it at the start of every operation, so a session whose account was demoted
-    /// or deleted after sign-in loses the rights at once.
+    /// The account's role and session version as stored now, or <see langword="null"/> when the account
+    /// no longer exists. The services ask for it at the start of every operation, so a session whose
+    /// account was deleted, demoted or given a new password after sign-in loses the rights at once.
     /// </summary>
-    Task<UserRole?> GetRoleAsync(int userId, CancellationToken cancellationToken = default);
+    Task<SessionState?> GetSessionStateAsync(int userId, CancellationToken cancellationToken = default);
 
     /// <summary>The account's stored name, contact data and role, or <see langword="null"/> when it does not exist.</summary>
     Task<UserSummary?> GetSummaryAsync(int userId, CancellationToken cancellationToken = default);
@@ -27,30 +27,30 @@ public interface IUserRepository
 
     /// <summary>
     /// Stores a new account and returns its id. An account added by an admin names that admin in
-    /// <paramref name="adminId"/>, who must still be an admin at the write; a sign-up passes
+    /// <paramref name="admin"/>, who must still be an admin at the write; a sign-up passes
     /// <see langword="null"/>.
     /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<int> AddAsync(User user, int? adminId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<int> AddAsync(User user, Actor? admin, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes an account's name, contact data and role and, when <see cref="AccountUpdate.NewPasswordHash"/>
     /// is set, its password. The last admin cannot lose the admin role: the check and the write are one
     /// conditional UPDATE, so two concurrent demotions cannot both succeed. Account
-    /// <paramref name="adminId"/>, the admin making the change, must still be an admin at the write,
+    /// <paramref name="admin"/>, the admin making the change, must still be an admin at the write,
     /// decided under the lock every role change takes.
     /// </summary>
     /// <exception cref="DuplicateAccountException">The user name, e-mail or phone is taken.</exception>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<AccountUpdateOutcome> UpdateAsync(int adminId, AccountUpdate update, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<AccountUpdateOutcome> UpdateAsync(Actor admin, AccountUpdate update, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes an account that is no admin and has no rentals, in one conditional DELETE, while account
-    /// <paramref name="adminId"/> is still an admin.
+    /// <paramref name="admin"/> is still an admin.
     /// </summary>
-    /// <exception cref="ActorRevokedException">Account <paramref name="adminId"/> is no admin (any more); nothing was written.</exception>
-    Task<AccountDeleteOutcome> DeleteAsync(int adminId, int userId, CancellationToken cancellationToken = default);
+    /// <exception cref="ActorRevokedException">Account <paramref name="admin"/> is no admin (any more) or its session is outdated; nothing was written.</exception>
+    Task<AccountDeleteOutcome> DeleteAsync(Actor admin, int userId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Replaces the password of <paramref name="verified"/> with <paramref name="newPasswordHash"/>, only

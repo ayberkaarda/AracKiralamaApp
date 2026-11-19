@@ -16,8 +16,8 @@ public sealed class CarServiceTests
 
     public CarServiceTests()
     {
-        _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.Admin);
-        _users.Setup(u => u.GetRoleAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.User);
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.Admin, 0));
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.User, 0));
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -47,7 +47,7 @@ public sealed class CarServiceTests
     [Fact]
     public async Task DemotedAdminSession_CannotManageVehiclesOrAccounts()
     {
-        _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.User);
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.User, 0));
         var guard = new AccessGuard(_users.Object, _audit);
         var cars = Service();
         var accounts = new AccountService(_users.Object, new PasswordHasher(iterations: 1_000), guard, _audit, TestValidators.NewAccount, TestValidators.AccountChange);
@@ -69,19 +69,36 @@ public sealed class CarServiceTests
     [Fact]
     public async Task DeletedAccount_CannotEvenBrowseTheCars()
     {
-        _users.Setup(u => u.GetRoleAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ReturnsAsync((UserRole?)null);
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ReturnsAsync((SessionState?)null);
 
         await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetCatalogAsync(Sessions.User, CarFilter.None, Ct));
 
         _cars.VerifyNoOtherCalls();
     }
 
+    /// <summary>
+    /// A session issued before the account's session version was raised is refused even when the stored
+    /// role is the one the session has: the change (a demotion undone later, a new password) ended it.
+    /// </summary>
+    [Fact]
+    public async Task SessionFromBeforeAVersionChange_IsRefusedWithTheRoleUnchanged()
+    {
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.Admin, 1));
+        _users.Setup(u => u.GetSessionStateAsync(Sessions.User.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(new SessionState(UserRole.User, 3));
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetAllAsync(Sessions.Admin, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => Service().GetCatalogAsync(Sessions.User, CarFilter.None, Ct));
+
+        _cars.VerifyNoOtherCalls();
+        Assert.Equal(["access.denied admin", "access.denied user"], _audit.Entries);
+    }
+
     [Fact]
     public async Task Add_StoresTheParsedCarWithANormalizedPlate()
     {
         Car? stored = null;
-        _cars.Setup(c => c.AddAsync(Sessions.Admin.UserId, It.IsAny<Car>(), It.IsAny<CancellationToken>()))
-            .Callback<int, Car, CancellationToken>((_, car, _) => stored = car)
+        _cars.Setup(c => c.AddAsync(Sessions.Admin.Actor, It.IsAny<Car>(), It.IsAny<CancellationToken>()))
+            .Callback<Actor, Car, CancellationToken>((_, car, _) => stored = car)
             .ReturnsAsync(4);
 
         var id = await Service().AddAsync(Sessions.Admin, Valid with { Brand = "  Anka  " }, Ct);
@@ -153,7 +170,7 @@ public sealed class CarServiceTests
     [Fact]
     public async Task Add_TakenPlate_IsReportedOnThePlateField()
     {
-        _cars.Setup(c => c.AddAsync(Sessions.Admin.UserId, It.IsAny<Car>(), It.IsAny<CancellationToken>())).ThrowsAsync(new DuplicatePlateException());
+        _cars.Setup(c => c.AddAsync(Sessions.Admin.Actor, It.IsAny<Car>(), It.IsAny<CancellationToken>())).ThrowsAsync(new DuplicatePlateException());
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().AddAsync(Sessions.Admin, Valid, Ct));
 
@@ -173,8 +190,8 @@ public sealed class CarServiceTests
         Car? sent = null;
         _cars.Setup(c => c.FindAsync(3, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Car { Id = 3, Brand = "Anka", Model = "Kent", Transmission = "Manual", FuelType = "Benzinli", Plate = "00 DMO 001", DailyPrice = 850.5m });
-        _cars.Setup(c => c.UpdateAsync(Sessions.Admin.UserId, It.IsAny<Car>(), It.IsAny<CancellationToken>()))
-            .Callback<int, Car, CancellationToken>((_, car, _) => sent = car)
+        _cars.Setup(c => c.UpdateAsync(Sessions.Admin.Actor, It.IsAny<Car>(), It.IsAny<CancellationToken>()))
+            .Callback<Actor, Car, CancellationToken>((_, car, _) => sent = car)
             .ReturnsAsync(CarUpdateOutcome.Updated);
 
         await Service().UpdateAsync(Sessions.Admin, 3, Valid with { Transmission = "Manual", FuelType = "Benzinli", IsListed = false }, Ct);
@@ -200,7 +217,7 @@ public sealed class CarServiceTests
     [Fact]
     public async Task Delete_CarWithRentals_IsRefused()
     {
-        _cars.Setup(c => c.DeleteAsync(Sessions.Admin.UserId, 3, It.IsAny<CancellationToken>())).ReturnsAsync(CarDeleteOutcome.HasRentals);
+        _cars.Setup(c => c.DeleteAsync(Sessions.Admin.Actor, 3, It.IsAny<CancellationToken>())).ReturnsAsync(CarDeleteOutcome.HasRentals);
 
         var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().DeleteAsync(Sessions.Admin, 3, Ct));
 

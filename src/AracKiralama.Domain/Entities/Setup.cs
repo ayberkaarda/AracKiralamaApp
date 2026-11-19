@@ -38,10 +38,14 @@ public sealed record AccountCredentials(
     string PasswordHash,
     PasswordFormat PasswordFormat,
     int FailedLoginCount,
-    DateTime? LockoutEnd);
+    DateTime? LockoutEnd,
+    int SessionVersion = 0);
 
 /// <summary>A usable setup key, as a given key is compared with it.</summary>
 public sealed record StoredSetupKey(int Id, byte[] KeyHash);
+
+/// <summary>What every operation checks a session against: the stored role and session version.</summary>
+public sealed record SessionState(UserRole Role, int SessionVersion);
 
 /// <summary>An account as the admin's account list shows it; the password never leaves the database.</summary>
 public sealed record UserSummary(int Id, string UserName, string? Email, string? Phone, UserRole Role);

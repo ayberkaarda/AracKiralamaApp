@@ -12,20 +12,22 @@ namespace AracKiralama.Business.Services;
 internal sealed class AccessGuard(IUserRepository users, IAuditLog audit)
 {
     /// <summary>
-    /// The account's current role. Refuses, and records, a session whose account no longer exists.
+    /// The account's current role. Refuses, and records, a session whose account no longer exists or
+    /// whose session version was raised since sign-in (a role change or a password set by an admin, also
+    /// one undone again later).
     /// </summary>
     public async Task<UserRole> RequireActiveAsync(UserSession? session, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var role = await users.GetRoleAsync(session.UserId, cancellationToken).ConfigureAwait(false);
-        if (role is not { } current)
+        var state = await users.GetSessionStateAsync(session.UserId, cancellationToken).ConfigureAwait(false);
+        if (state is null || state.SessionVersion != session.SessionVersion)
         {
             audit.Record(AuditEvent.AccessDenied, AuditCodes.Of(session.Role));
             throw new AccessDeniedException();
         }
 
-        return current;
+        return state.Role;
     }
 
     /// <summary>

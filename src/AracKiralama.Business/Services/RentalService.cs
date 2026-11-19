@@ -124,9 +124,11 @@ internal sealed class RentalService(
         // allowed day is today by the database's clock.
         var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
         var current = Quote(quote.CarId, quote.DailyPrice, quote.StartDate, quote.Days, today);
-        var result = await rentals.RentAsync(
-            new RentalRequest(current.CarId, session.UserId, current.StartDate, current.EndDate, current.DailyPrice, current.Total),
-            cancellationToken).ConfigureAwait(false);
+        var result = await access.WriteAsActorAsync(
+            session,
+            () => rentals.RentAsync(
+                new RentalRequest(current.CarId, session.UserId, current.StartDate, current.EndDate, current.DailyPrice, current.Total, session.SessionVersion),
+                cancellationToken)).ConfigureAwait(false);
 
         var auditRole = AuditCodes.Of(role);
         switch (result.Outcome)
@@ -179,7 +181,7 @@ internal sealed class RentalService(
         // The owner filter comes from the role stored now: a demoted admin ends only their own rentals.
         // The repository checks the role again inside the write.
         var owner = await access.OwnerFilterAsync(session, cancellationToken).ConfigureAwait(false);
-        var actor = new RentalActor(session.UserId, AsAdmin: owner is null);
+        var actor = new RentalActor(session.UserId, AsAdmin: owner is null, session.SessionVersion);
         var today = await clock.TodayAsync(timeProvider, cancellationToken).ConfigureAwait(false);
         var result = await access.WriteAsActorAsync(session, () => rentals.EndAsync(rentalId, actor, today, cancellationToken)).ConfigureAwait(false);
         if (result.Outcome == EndRentalOutcome.NotFound)
