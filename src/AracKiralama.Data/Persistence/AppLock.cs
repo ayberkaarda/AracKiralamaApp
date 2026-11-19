@@ -13,8 +13,20 @@ namespace AracKiralama.Data.Persistence;
 internal static class AppLock
 {
     /// <summary>
+    /// Room the client leaves the server beyond a lock's own wait before it gives up on the statement, so
+    /// a busy lock always ends with the server's "not granted" (shown as a busy message) and never with a
+    /// client side command timeout that would look like a broken connection.
+    /// </summary>
+    internal const int CommandTimeoutMarginSeconds = 30;
+
+    // SqlClient's default when the context sets no command timeout.
+    private const int DefaultCommandTimeoutSeconds = 30;
+
+    /// <summary>
     /// Takes the lock on SQL Server. Other providers (the tests' SQLite) serialize writing transactions
-    /// themselves and need none. The caller must have begun a transaction.
+    /// themselves and need none. The caller must have begun a transaction. While the lock is requested
+    /// the statement's command timeout is at least the lock's wait plus
+    /// <see cref="CommandTimeoutMarginSeconds"/>.
     /// </summary>
     public static async Task AcquireAsync(AracDbContext db, string resource, int timeoutMilliseconds, CancellationToken cancellationToken)
     {
@@ -29,12 +41,41 @@ internal static class AppLock
         var result = new SqlParameter("@result", SqlDbType.Int) { Direction = ParameterDirection.Output };
         var name = new SqlParameter("@resource", SqlDbType.NVarChar, 255) { Value = resource };
         var timeout = new SqlParameter("@timeout", SqlDbType.Int) { Value = timeoutMilliseconds };
-        await db.Database.ExecuteSqlRawAsync(
-            "EXEC @result = sp_getapplock @Resource = @resource, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = @timeout;",
-            [result, name, timeout],
-            cancellationToken).ConfigureAwait(false);
+        var configured = db.Database.GetCommandTimeout();
+        var raised = CommandTimeoutFor(configured, timeoutMilliseconds);
+        if (raised is { } seconds)
+        {
+            db.Database.SetCommandTimeout(seconds);
+        }
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "EXEC @result = sp_getapplock @Resource = @resource, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = @timeout;",
+                [result, name, timeout],
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (raised is not null)
+            {
+                db.Database.SetCommandTimeout(configured);
+            }
+        }
 
         EnsureGranted(result.Value is int code ? code : null, resource);
+    }
+
+    /// <summary>
+    /// The command timeout, in seconds, the lock request needs when <paramref name="configuredSeconds"/>
+    /// (<see langword="null"/>: SqlClient's default of 30 seconds, 0: no limit) is too short for a wait of
+    /// <paramref name="lockTimeoutMilliseconds"/>; <see langword="null"/> when it is long enough.
+    /// </summary>
+    internal static int? CommandTimeoutFor(int? configuredSeconds, int lockTimeoutMilliseconds)
+    {
+        var effective = configuredSeconds ?? DefaultCommandTimeoutSeconds;
+        var needed = ((lockTimeoutMilliseconds + 999) / 1000) + CommandTimeoutMarginSeconds;
+        return effective == 0 || effective >= needed ? null : needed;
     }
 
     /// <summary>Throws when an sp_getapplock return code means the lock was not granted (0 and 1 mean granted).</summary>
