@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 345 518" width="345" height="518">
+  <!-- Picture beside the sign-in fields: a road running into the hills at dusk, with the application mark's car. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11695f"/>
+      <stop offset="0.6" stop-color="#2bb3a3"/>
+      <stop offset="1" stop-color="#bfe6df"/>
+    </linearGradient>
+  </defs>
+  <rect width="345" height="518" fill="url(#sky)"/>
+  <circle cx="250" cy="150" r="46" fill="#f6e7b4" opacity="0.9"/>
+  <path d="M0 300 Q90 240 170 290 T345 270 L345 518 L0 518 Z" fill="#0e5a51"/>
+  <path d="M0 340 Q110 300 210 330 T345 320 L345 518 L0 518 Z" fill="#0b463f"/>
+  <path d="M150 330 L195 330 L300 518 L45 518 Z" fill="#34403f"/>
+  <path d="M171 340 L174 340 L176 370 L169 370 Z M168 395 L177 395 L180 440 L165 440 Z M163 470 L182 470 L186 518 L159 518 Z" fill="#f4f7f6"/>
+  <g transform="translate(58 388) scale(0.9)">
+    <path d="M14 50 L28 16 Q34 2 50 0 L140 0 Q154 0 164 12 L182 34 Q192 36 192 48 L192 62 Q192 70 184 70 L12 70 Q6 70 6 62 L6 56 Q6 50 14 50 Z" fill="#ffffff"/>
+    <path d="M46 12 L70 12 L70 34 L34 34 Z M80 12 L132 12 Q142 12 150 22 L160 34 L80 34 Z" fill="#11695f"/>
+    <circle cx="52" cy="72" r="18" fill="#1c2b2a"/><circle cx="52" cy="72" r="7" fill="#e8f4f2"/>
+    <circle cx="148" cy="72" r="18" fill="#1c2b2a"/><circle cx="148" cy="72" r="7" fill="#e8f4f2"/>
+  </g>
+</svg>

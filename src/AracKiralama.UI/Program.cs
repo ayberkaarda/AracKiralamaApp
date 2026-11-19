@@ -1,0 +1,206 @@
+using System.Globalization;
+using AracKiralama.Business;
+using AracKiralama.Business.Auditing;
+using AracKiralama.Business.Services;
+using AracKiralama.Data;
+using AracKiralama.Data.Persistence;
+using AracKiralama.UI.Infrastructure;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace AracKiralama.UI
+{
+    internal static class Program
+    {
+        internal const string ConnectionStringName = "AracKiralama";
+
+        /// <summary>
+        /// Application entry point and composition root. The application never creates setup keys; only
+        /// the database owner does, with docs/issue-setup-key.sql.
+        /// </summary>
+        [STAThread]
+        private static void Main()
+        {
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += (_, e) => ErrorReporter.Show(e.Exception);
+            AppDomain.CurrentDomain.UnhandledException += (_, e) => ErrorReporter.Show(e.ExceptionObject as Exception);
+
+            ApplicationConfiguration.Initialize();
+
+            var configuration = BuildConfiguration();
+            var (policy, policyProblems) = AppConfiguration.ReadRentalPolicy(configuration);
+            if (policyProblems.Count > 0)
+            {
+                // The problems name settings and limits only.
+                Dialogs.Show(
+                    null,
+                    "appsettings.json içindeki \"Rental\" ayarları geçersiz:\n\n" + string.Join("\n", policyProblems),
+                    AppText.Title,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
+
+            var connectionString = AppConfiguration.ResolveConnectionString(configuration);
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                Dialogs.Show(
+                    null,
+                    "Veritabanı bağlantı ayarı bulunamadı.\n\n"
+                    + "appsettings.example.json dosyasını appsettings.json olarak kopyalayıp bağlantı bilgisini girin, "
+                    + "kullanıcı gizli ayarlarına (user secrets) ekleyin ya da ARAC_CONNECTION ortam değişkenini tanımlayın.",
+                    AppText.Title,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
+
+            var options = new DataAccessOptions { SeedDemoData = AppConfiguration.IsDemoRequested(configuration) };
+            using var serviceProvider = ConfigureServices(connectionString, options, policy);
+            bool setupRequired;
+            bool adminMissing;
+            try
+            {
+                // No synchronization context exists yet, so blocking here cannot deadlock.
+                serviceProvider.GetRequiredService<IDatabaseInitializer>().InitializeAsync().GetAwaiter().GetResult();
+                var setupService = serviceProvider.GetRequiredService<ISetupService>();
+                setupRequired = setupService.IsSetupRequiredAsync().GetAwaiter().GetResult();
+                adminMissing = setupRequired || setupService.IsAdminMissingAsync().GetAwaiter().GetResult();
+            }
+#pragma warning disable CA1031 // Startup boundary: report and exit instead of crashing.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                ErrorReporter.Show(ex);
+                return;
+            }
+
+            var formFactory = serviceProvider.GetRequiredService<IFormFactory>();
+
+            // On an empty database the first admin is created with a password of the installer's own
+            // choosing; there is no default account. Closing the setup ends the application. A database
+            // with accounts but no admin keeps its sign-in, which offers the setup with a setup key.
+            if (setupRequired)
+            {
+                using var setup = formFactory.Create<FirstAdminSetupForm>();
+                if (setup.ShowDialog() != DialogResult.OK)
+                {
+                    return;
+                }
+            }
+
+            var signIn = formFactory.Create<LoginForm>();
+            signIn.OfferAdminSetup = adminMissing && !setupRequired;
+            Application.Run(signIn);
+        }
+
+        private static IConfiguration BuildConfiguration() =>
+            new ConfigurationBuilder()
+                .AddSettingsFile(AppContext.BaseDirectory, AppConfiguration.SettingsFileName)
+                .AddUserSecrets(typeof(Program).Assembly, optional: true)
+                .AddEnvironmentVariables()
+                .Build();
+
+        private static ServiceProvider ConfigureServices(string connectionString, DataAccessOptions options, RentalPolicy policy)
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton<IAuditLog, TraceAuditLog>();
+            services.AddSqlServerDataAccess(connectionString, options);
+            services.AddBusinessServices(policy);
+            services.AddSingleton<IFormFactory, FormFactory>();
+            return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
+        }
+    }
+
+    /// <summary>How the application reads its settings.</summary>
+    internal static class AppConfiguration
+    {
+        public const string SettingsFileName = "appsettings.json";
+
+        /// <summary>Settings key of the demonstration data switch.</summary>
+        public const string DemoSettingKey = "Seed:Demo";
+
+        public const string MinRentalDaysKey = RentalPolicy.SectionName + ":MinRentalDays";
+
+        public const string MaxRentalDaysKey = RentalPolicy.SectionName + ":MaxRentalDays";
+
+        public const string MaxAdvanceDaysKey = RentalPolicy.SectionName + ":MaxAdvanceDays";
+
+        public const string LongRentalDaysKey = RentalPolicy.SectionName + ":LongRentalDays";
+
+        public const string LongRentalDiscountPercentKey = RentalPolicy.SectionName + ":LongRentalDiscountPercent";
+        /// <summary>Adds an optional JSON settings file located in <paramref name="basePath"/>.</summary>
+        public static IConfigurationBuilder AddSettingsFile(this IConfigurationBuilder builder, string basePath, string fileName) =>
+            builder
+                .SetBasePath(basePath)
+                .AddJsonFile(fileName, optional: true, reloadOnChange: false);
+
+        /// <summary>
+        /// Resolution order (last wins): appsettings.json, user secrets, ConnectionStrings__AracKiralama
+        /// environment variable, ARAC_CONNECTION environment variable.
+        /// </summary>
+        public static string? ResolveConnectionString(IConfiguration configuration)
+        {
+            ArgumentNullException.ThrowIfNull(configuration);
+
+            var fromEnvironment = configuration[DataServiceCollectionExtensions.ConnectionEnvironmentVariable];
+            return string.IsNullOrWhiteSpace(fromEnvironment)
+                ? configuration.GetConnectionString(Program.ConnectionStringName)
+                : fromEnvironment;
+        }
+
+        /// <summary>
+        /// Whether the demonstration data was asked for, through ARAC_DEMO ("1" or "true") or the Seed:Demo
+        /// setting. Anything else, including a missing or malformed value, means no.
+        /// </summary>
+        public static bool IsDemoRequested(IConfiguration configuration)
+        {
+            ArgumentNullException.ThrowIfNull(configuration);
+
+            return IsYes(configuration[DataServiceCollectionExtensions.DemoEnvironmentVariable])
+                || IsYes(configuration[DemoSettingKey]);
+        }
+
+        /// <summary>
+        /// Reads the <c>Rental</c> section; missing values keep their defaults. A value that is not a whole
+        /// number or is out of range is reported as a problem and the defaults are used.
+        /// </summary>
+        public static (RentalPolicy Policy, IReadOnlyList<string> Problems) ReadRentalPolicy(IConfiguration configuration)
+        {
+            ArgumentNullException.ThrowIfNull(configuration);
+
+            var defaults = new RentalPolicy();
+            var problems = new List<string>();
+
+            int Read(string key, int fallback)
+            {
+                if (configuration[key] is not { } text)
+                {
+                    return fallback;
+                }
+
+                if (int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value))
+                {
+                    return value;
+                }
+
+                problems.Add(key + " bir tam sayı olmalıdır.");
+                return fallback;
+            }
+
+            var policy = new RentalPolicy
+            {
+                MinRentalDays = Read(MinRentalDaysKey, defaults.MinRentalDays),
+                MaxRentalDays = Read(MaxRentalDaysKey, defaults.MaxRentalDays),
+                MaxAdvanceDays = Read(MaxAdvanceDaysKey, defaults.MaxAdvanceDays),
+                LongRentalDays = Read(LongRentalDaysKey, defaults.LongRentalDays),
+                LongRentalDiscountPercent = Read(LongRentalDiscountPercentKey, defaults.LongRentalDiscountPercent),
+            };
+            problems.AddRange(policy.Validate());
+            return (problems.Count == 0 ? policy : defaults, problems);
+        }
+        private static bool IsYes(string? value) =>
+            value is not null
+            && (value.Trim() == "1" || string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase));
+    }
+}
