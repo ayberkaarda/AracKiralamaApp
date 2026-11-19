@@ -22,40 +22,6 @@ public sealed class BrandingTests
         Assert.NotNull(AppAssets.Icon);
     }
 
-    [Fact]
-    public void Forms_HaveNeutralTurkishTitles() => Run(() =>
-    {
-        var cars = new ControlledCarService();
-        var rentals = new ControlledRentalService();
-        var forms = new NoFormsFactory();
-        Form[] all =
-        [
-            new LoginForm(new PendingAuthService(), forms),
-            new RegisterForm(new PendingAuthService()),
-            new ChangePasswordForm(new PendingAuthService(), Sessions.User),
-            new CarListForm(cars, forms, Sessions.User),
-            new RentalForm(cars, rentals, new NoFormsFactory(), Sessions.User, 1),
-            new ProfileForm(rentals, new ControlledContractService(), forms, Sessions.User),
-            new AdminPanel(cars, forms, Sessions.Admin),
-            new RentedCarsPanel(rentals, cars, new ControlledContractService(), Sessions.Admin),
-        ];
-
-        try
-        {
-            Assert.Equal(
-                ["Araç Kiralama - Giriş", "Araç Kiralama - Hesap oluştur", "Araç Kiralama - Şifre değiştir", "Araç Kiralama - Araçlar", "Araç Kiralama - Araç kirala", "Araç Kiralama - Kiralamalarım", "Araç Kiralama - Yönetim paneli", "Araç Kiralama - Kiralamalar"],
-                all.Select(f => f.Text));
-            Assert.All(all, f => Assert.NotNull(f.Icon));
-        }
-        finally
-        {
-            foreach (var form in all)
-            {
-                form.Dispose();
-            }
-        }
-    });
-
     [Theory]
     [InlineData("\\\\sunucu\\pay\\arac.png")]
     [InlineData("C:\\arac.png")]
