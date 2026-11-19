@@ -378,8 +378,25 @@ namespace AracKiralama.UI
 
         private void btnUsers_Click(object? sender, EventArgs e)
         {
-            using var panel = _forms.Create<UserManagementPanel>(_session);
-            panel.ShowDialog(this);
+            bool sessionEnded;
+            using (var panel = _forms.Create<UserManagementPanel>(_session))
+            {
+                panel.ShowDialog(this);
+                sessionEnded = panel.SessionEnded;
+            }
+
+            if (sessionEnded)
+            {
+                // The admin changed their own role or password: back to the sign-in screen.
+                SignOut();
+            }
+        }
+
+        /// <summary>Closes the panel and returns to the sign-in screen.</summary>
+        internal void SignOut()
+        {
+            SignedOut = true;
+            Close();
         }
 
         /// <summary>Opens a form of the car in the form (calendar or maintenance log); nothing without a car.</summary>
@@ -424,10 +441,6 @@ namespace AracKiralama.UI
 
         private async void btnDeleteCar_Click(object? sender, EventArgs e) => await DeleteAsync();
 
-        private void btnSignOut_Click(object? sender, EventArgs e)
-        {
-            SignedOut = true;
-            Close();
-        }
+        private void btnSignOut_Click(object? sender, EventArgs e) => SignOut();
     }
 }

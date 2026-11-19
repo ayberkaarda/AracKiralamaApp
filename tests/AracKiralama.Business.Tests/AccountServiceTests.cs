@@ -175,6 +175,24 @@ public sealed class AccountServiceTests
         Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Gizli.Sifre1", hash!, PasswordFormat.Pbkdf2));
     }
 
+    /// <summary>
+    /// An admin who sets their own password or role ends their own session: the answer says so, so the
+    /// screen can sign out. A change of their contact data, or of another account, does not.
+    /// </summary>
+    [Theory]
+    [InlineData(1, "Yeni.Sifre12", UserRole.Admin, true)]
+    [InlineData(1, null, UserRole.User, true)]
+    [InlineData(1, null, UserRole.Admin, false)]
+    [InlineData(4, "Yeni.Sifre12", UserRole.Admin, false)]
+    public async Task Update_OwnPasswordOrRole_EndsTheOwnSession(int userId, string? password, UserRole role, bool ends)
+    {
+        _users.Setup(u => u.GetSummaryAsync(userId, It.IsAny<CancellationToken>())).ReturnsAsync(new UserSummary(userId, "yeni", "yeni@example.com", "5550000009", UserRole.Admin, 0));
+        _users.Setup(u => u.FindTakenAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(), userId, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.Actor, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccountUpdateOutcome.Updated);
+
+        Assert.Equal(ends, await Service().UpdateAsync(Sessions.Admin, userId, 0, Valid with { Password = password, Role = role }, Ct));
+    }
+
     /// <summary>A form loaded before the account's role or password changed is refused before anything is written.</summary>
     [Fact]
     public async Task Update_FromAFormLoadedBeforeARoleChange_IsStale()

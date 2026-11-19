@@ -23,7 +23,11 @@ public interface IAccountService
     /// <see cref="UserSummary.Version"/> the form loaded: when the account's role or password changed since,
     /// nothing is written and the form has to load the account again.
     /// </summary>
-    Task UpdateAsync(UserSession session, int userId, int expectedVersion, AccountInput input, CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see langword="true"/> when the admin changed their own role or password: that ends their own
+    /// session too, so the screen has to sign out.
+    /// </returns>
+    Task<bool> UpdateAsync(UserSession session, int userId, int expectedVersion, AccountInput input, CancellationToken cancellationToken = default);
 
     /// <summary>Deletes an account that is no admin and has no rentals.</summary>
     Task DeleteAsync(UserSession session, int userId, CancellationToken cancellationToken = default);
@@ -80,7 +84,7 @@ internal sealed class AccountService(
         }
     }
 
-    public async Task UpdateAsync(UserSession session, int userId, int expectedVersion, AccountInput input, CancellationToken cancellationToken = default)
+    public async Task<bool> UpdateAsync(UserSession session, int userId, int expectedVersion, AccountInput input, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
         ArgumentNullException.ThrowIfNull(input);
@@ -116,7 +120,9 @@ internal sealed class AccountService(
         {
             case AccountUpdateOutcome.Updated:
                 audit.Record(AuditEvent.AccountChanged, AuditRole.Admin);
-                return;
+
+                // The repository raised the version exactly then, so the admin's own session has ended.
+                return userId == session.UserId && (newHash is not null || input.Role != stored.Role);
             case AccountUpdateOutcome.LastAdmin:
                 throw new BusinessRuleException(LastAdmin);
             case AccountUpdateOutcome.ChangedElsewhere:

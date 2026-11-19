@@ -227,6 +227,34 @@ public sealed class ListingTests
         Assert.Contains(NoDialogs.Requested, r => r.Contains("başka biri tarafından değiştirildi", StringComparison.Ordinal));
     });
 
+    /// <summary>An admin who changes their own password or role is told why and the panel closes as signed out.</summary>
+    [Fact]
+    public void AccountPanel_OwnPasswordChanged_SignsOutWithAClearMessage() => Run(() =>
+    {
+        var accounts = new FakeAccounts { EndsOwnSession = true };
+        var prompts = new RecordingPrompts();
+        using var form = new UserManagementPanel(accounts, Sessions.Admin) { Prompts = prompts };
+        form.SelectUser(new UserSummary(1, "yonetici", null, null, UserRole.Admin, 0));
+        Find<TextBox>(form, "txtPassword").Text = "Yeni.Sifre12";
+
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.True(form.SessionEnded);
+        Assert.Equal([UserManagementPanel.OwnSessionEndedMessage], prompts.Messages);
+    });
+
+    [Fact]
+    public void AccountPanel_OtherAccountChanged_KeepsThePanelOpen() => Run(() =>
+    {
+        var accounts = new FakeAccounts();
+        using var form = new UserManagementPanel(accounts, Sessions.Admin) { Prompts = new RecordingPrompts() };
+        form.SelectUser(new UserSummary(2, "ornek", null, null, UserRole.User, 0));
+
+        Assert.True(form.UpdateAsync().IsCompletedSuccessfully);
+
+        Assert.False(form.SessionEnded);
+    });
+
     private sealed class FakeAccounts : Business.Services.IAccountService
     {
         public List<UserSummary> Users { get; } = [];
@@ -244,11 +272,14 @@ public sealed class ListingTests
         /// <summary>Thrown by changes instead of completing them.</summary>
         public Exception? UpdateFailure { get; set; }
 
-        public Task UpdateAsync(Business.Services.UserSession session, int userId, int expectedVersion, Business.Services.AccountInput input, CancellationToken cancellationToken = default)
+        /// <summary>What the next successful change answers: whether it ended the admin's own session.</summary>
+        public bool EndsOwnSession { get; set; }
+
+        public Task<bool> UpdateAsync(Business.Services.UserSession session, int userId, int expectedVersion, Business.Services.AccountInput input, CancellationToken cancellationToken = default)
         {
             LastUpdate = input;
             LastVersion = (userId, expectedVersion);
-            return UpdateFailure is { } failure ? Task.FromException(failure) : Task.CompletedTask;
+            return UpdateFailure is { } failure ? Task.FromException<bool>(failure) : Task.FromResult(EndsOwnSession);
         }
 
         public Task DeleteAsync(Business.Services.UserSession session, int userId, CancellationToken cancellationToken = default) => Task.CompletedTask;

@@ -112,9 +112,10 @@ namespace AracKiralama.UI
 
             return WriteAsync(async () =>
             {
+                bool ownSessionEnded;
                 try
                 {
-                    await _accounts.UpdateAsync(_session, loaded.Id, loaded.Version, ReadInput());
+                    ownSessionEnded = await _accounts.UpdateAsync(_session, loaded.Id, loaded.Version, ReadInput());
                 }
                 catch (BusinessRuleException ex) when (ex.IsStale)
                 {
@@ -132,11 +133,31 @@ namespace AracKiralama.UI
                     throw;
                 }
 
+                if (ownSessionEnded)
+                {
+                    // The admin's own role or password changed: this session has ended for good, so the
+                    // panel signs out instead of answering every later click with a refusal.
+                    SessionEnded = true;
+                    ClearForm();
+                    Prompts.Inform(OwnSessionEndedMessage);
+                    Close();
+                    return;
+                }
+
                 Prompts.Inform("Kullanıcı başarıyla güncellendi.");
                 ClearForm();
                 await LoadUsersAsync();
             });
         }
+
+        internal const string OwnSessionEndedMessage =
+            "Kendi rolünüzü veya şifrenizi değiştirdiniz. Güvenliğiniz için oturumunuz kapatıldı; lütfen yeniden giriş yapın.";
+
+        /// <summary>
+        /// Whether the admin changed their own role or password here, which ended their session: the admin
+        /// panel then signs out to the sign-in screen.
+        /// </summary>
+        internal bool SessionEnded { get; private set; }
 
         internal Task<bool> DeleteAsync()
         {
