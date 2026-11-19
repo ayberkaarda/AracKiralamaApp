@@ -83,9 +83,12 @@ veritabanı açılışta otomatik olarak oluşturulur, migration'ları uygulanı
 - ✅ Her çağrı oturum açmış hesaba göre denetlenir ve her yetkili işlem hesabın rolünü veritabanından yeniden okur:
   silinen ya da yetkisi alınan bir yöneticinin açık oturumu yetkilerini hemen kaybeder. Müşteriler yalnızca kendi
   kiralamalarına ulaşır; başka bir hesabın kiralaması, var olmayan bir kiralamayla aynı cevabı alır.
-- ✅ Her hesabın bir oturum sürümü vardır; her rol değişikliği ve yöneticinin belirlediği her şifre bu sürümü artırır.
-  Değişiklikten önceki oturum, değişiklik geri alınsa bile kalıcı olarak reddedilir (yetkisi alınıp yeniden verilen
-  yönetici yeniden giriş yapar). Her yazma işlemi sürümü, rolü ve hesabı kendi transaction'ı içinde denetler.
+- ✅ Her hesabın bir oturum sürümü vardır; her rol değişikliği, yöneticinin belirlediği her şifre ve hesabın kendi
+  şifre değişikliği bu sürümü artırır. Değişiklikten önceki oturum, değişiklik geri alınsa bile kalıcı olarak
+  reddedilir (yetkisi alınıp yeniden verilen yönetici yeniden giriş yapar). Kendi şifre değişikliği dahil her yazma
+  işlemi sürümü, rolü ve hesabı kendi komutu veya transaction'ı içinde denetler. "Şifre Değiştir", hesabın diğer
+  oturumlarını (örneğin çalınan şifreyle başka bir yerde açılmış olanı) kapatır; şifreyi değiştiren pencere çalışmaya
+  devam eder.
 - ✅ Bir aracın kiralama, iptal, iade, araç değişikliği ve bakım yazmaları aracın kilidini bekler (en fazla 30 saniye,
   her zaman komut zaman aşımından kısa); meşgul bir kilit hiçbir şey yazmadan "İşlem meşgul ... tekrar deneyin" ile
   biter.

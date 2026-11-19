@@ -55,10 +55,14 @@ public interface IUserRepository
     Task<AccountDeleteOutcome> DeleteAsync(Actor admin, int userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Replaces the password of <paramref name="verified"/> with <paramref name="newPasswordHash"/>, only
-    /// while the stored password is still the one that was verified.
+    /// The account's own password change: replaces the password of <paramref name="verified"/> with
+    /// <paramref name="newPasswordHash"/> and raises the session version, in one conditional UPDATE, only
+    /// while the stored password is still the one that was verified and the session version is still
+    /// <paramref name="sessionVersion"/> (the changing session's). Every other open session of the account
+    /// ends with it.
     /// </summary>
-    Task<bool> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default);
+    /// <returns>The new session version, or <see langword="null"/> when nothing was written.</returns>
+    Task<int?> ChangePasswordAsync(AccountCredentials verified, int sessionVersion, string newPasswordHash, CancellationToken cancellationToken);
 
     /// <summary>Whether any account has the admin role.</summary>
     Task<bool> AnyAdminAsync(CancellationToken cancellationToken = default);

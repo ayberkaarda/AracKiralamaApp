@@ -131,6 +131,7 @@ public sealed class AuditTests
             _users.Object,
             _hasher,
             new TestDatabaseClock(time),
+            new AccessGuard(_users.Object, audit ?? _audit),
             audit ?? _audit,
             TestValidators.SignIn,
             TestValidators.SignUp,

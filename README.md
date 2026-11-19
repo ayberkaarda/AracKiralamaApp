@@ -79,9 +79,11 @@ layers; database access uses EF Core, and the database is created, migrated or u
 - ✅ Every call is checked against the signed-in session, and every privileged operation reads the account's role
   again from the database: a deleted or demoted admin's open session loses its rights at once. Customers reach only
   their own rentals; another account's rental gets the same answer as a missing one.
-- ✅ Every account has a session version, raised by every role change and every password an admin sets. A session
-  from before the change is refused for good, also when the change is undone (an admin demoted and promoted again
-  signs in again). Every write checks the version, the role and the account inside its own transaction.
+- ✅ Every account has a session version, raised by every role change, every password an admin sets and the
+  account's own password change. A session from before the change is refused for good, also when the change is
+  undone (an admin demoted and promoted again signs in again). Every write, also the own password change, checks the
+  version, the role and the account inside its own statement or transaction. "Şifre Değiştir" ends the account's
+  other sessions, for example one opened elsewhere with a stolen password; the window that changed it keeps working.
 - ✅ Bookings, cancellations, returns, car changes and maintenance writes of one car wait for the car's lock (30
   seconds at most, always shorter than the command timeout); a busy lock ends with "İşlem meşgul ... tekrar deneyin"
   and nothing written.

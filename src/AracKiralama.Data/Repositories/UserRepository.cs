@@ -248,7 +248,7 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         };
     }
 
-    public async Task<bool> ChangePasswordAsync(AccountCredentials verified, string newPasswordHash, CancellationToken cancellationToken = default)
+    public async Task<int?> ChangePasswordAsync(AccountCredentials verified, int sessionVersion, string newPasswordHash, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(verified);
         ArgumentException.ThrowIfNullOrEmpty(newPasswordHash);
@@ -257,16 +257,21 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
         var id = verified.Id;
         var verifiedHash = verified.PasswordHash;
         var verifiedFormat = verified.PasswordFormat;
+
+        // The WHERE clause is the final decision: the password is still the verified one and the changing
+        // session is still current (no role change or other password change since). The new version ends
+        // every other session of the account in the same statement.
         var updated = await db.Users
-            .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat)
+            .Where(u => u.Id == id && u.PasswordHash == verifiedHash && u.PasswordFormat == verifiedFormat && u.SessionVersion == sessionVersion)
             .ExecuteUpdateAsync(
                 s => s
                     .SetProperty(u => u.PasswordHash, newPasswordHash)
                     .SetProperty(u => u.PasswordFormat, PasswordFormat.Pbkdf2)
-                    .SetProperty(u => u.FailedLoginCount, 0),
+                    .SetProperty(u => u.FailedLoginCount, 0)
+                    .SetProperty(u => u.SessionVersion, u => u.SessionVersion + 1),
                 cancellationToken)
             .ConfigureAwait(false);
-        return updated == 1;
+        return updated == 1 ? sessionVersion + 1 : null;
     }
 
     public async Task<bool> AnyAdminAsync(CancellationToken cancellationToken = default)

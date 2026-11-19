@@ -10,12 +10,14 @@ namespace AracKiralama.Business.Services;
 /// </summary>
 public sealed class UserSession
 {
+    private int _sessionVersion;
+
     internal UserSession(int userId, string userName, UserRole role, int sessionVersion = 0)
     {
         UserId = userId;
         UserName = userName;
         Role = role;
-        SessionVersion = sessionVersion;
+        _sessionVersion = sessionVersion;
     }
 
     public int UserId { get; }
@@ -25,13 +27,22 @@ public sealed class UserSession
     public UserRole Role { get; }
 
     /// <summary>
-    /// The account's session version at sign-in. Once the stored version is raised (a role change or a
-    /// password set by an admin) the session is refused for good, also when the change is undone.
+    /// The account's session version at sign-in. Once the stored version is raised (a role change, a
+    /// password set by an admin, or the account's own password change in another session) the session is
+    /// refused for good, also when the change is undone. The session that changes its own password moves
+    /// on to the new version (see <see cref="Renew"/>).
     /// </summary>
-    public int SessionVersion { get; }
+    public int SessionVersion => Volatile.Read(ref _sessionVersion);
 
     public bool IsAdmin => Role == UserRole.Admin;
 
     /// <summary>The account as the repositories check it inside a write.</summary>
     internal Actor Actor => new(UserId, SessionVersion);
+
+    /// <summary>
+    /// Moves this session to <paramref name="sessionVersion"/>, the version its own password change just
+    /// stored. Every window of this sign-in shares the session and keeps working; every other session of
+    /// the account still carries the old version and is refused from now on.
+    /// </summary>
+    internal void Renew(int sessionVersion) => Volatile.Write(ref _sessionVersion, sessionVersion);
 }

@@ -255,6 +255,42 @@ public sealed class SqliteServiceTests : IAsyncLifetime
         Assert.Equal(0, await db.Rentals.CountAsync(Ct));
     }
 
+    /// <summary>
+    /// A customer who notices someone else signed in with their password changes it: the other session
+    /// ends at once, the session that changed it keeps working, and only the new password signs in.
+    /// </summary>
+    [Fact]
+    public async Task ChangeOwnPassword_EndsTheOtherSessionsAndKeepsThisOne()
+    {
+        var auth = _db.Get<IAuthService>();
+        var rentals = _db.Get<IRentalService>();
+        var intruder = await auth.SignInAsync("ornek", Password, Ct);
+
+        await auth.ChangePasswordAsync(_customer, Password, "Yeni.Sifre123", "Yeni.Sifre123", Ct);
+
+        Assert.Equal(1, _customer.SessionVersion);
+        Assert.Empty(await rentals.GetMyActiveRentalsAsync(_customer, Ct));
+        await RentAsync(_db.Services, _customer, CarId, startOffset: 1);
+        await Assert.ThrowsAsync<AccessDeniedException>(() => rentals.GetMyActiveRentalsAsync(intruder, Ct));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => RentAsync(_db.Services, intruder, OtherCarId, startOffset: 1));
+        await Assert.ThrowsAsync<AccessDeniedException>(() => auth.ChangePasswordAsync(intruder, "Yeni.Sifre123", "Baska.Sifre123", "Baska.Sifre123", Ct));
+        await Assert.ThrowsAsync<BusinessRuleException>(() => auth.SignInAsync("ornek", Password, Ct));
+        Assert.Equal(1, (await auth.SignInAsync("ornek", "Yeni.Sifre123", Ct)).SessionVersion);
+        Assert.Equal(1, await ActiveAsync(CarId));
+    }
+
+    /// <summary>A session refused for good (an admin set a new password) cannot change the password, even with the current one.</summary>
+    [Fact]
+    public async Task ChangeOwnPassword_FromASessionEndedByAnAdmin_IsDenied()
+    {
+        await _db.Get<IAccountService>().UpdateAsync(_admin, _customer.UserId, 0, new AccountInput("ornek", "Yonetici.Sifre1", "ornek@example.com", "5540000001", UserRole.User), Ct);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(
+            () => _db.Get<IAuthService>().ChangePasswordAsync(_customer, "Yonetici.Sifre1", "Yeni.Sifre123", "Yeni.Sifre123", Ct));
+
+        await _db.Get<IAuthService>().SignInAsync("ornek", "Yonetici.Sifre1", Ct);
+    }
+
     /// <summary>A sign-in verified before a role change cannot issue a session with the old version.</summary>
     [Fact]
     public async Task SignIn_RecordedAfterARoleChange_IsRefused()

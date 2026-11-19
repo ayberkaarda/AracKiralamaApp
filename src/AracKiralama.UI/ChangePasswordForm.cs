@@ -7,6 +7,9 @@ namespace AracKiralama.UI
     /// <summary>Change of the signed-in account's own password.</summary>
     public partial class ChangePasswordForm : Form
     {
+        internal const string ChangedMessage =
+            "Şifre başarıyla değiştirildi. Güvenliğiniz için hesabınızın başka bilgisayarlarda açık olan oturumları kapatıldı; bu pencere açık kalır.";
+
         private readonly IAuthService _auth;
         private readonly UserSession _session;
         private readonly ExclusiveOperation _change = new();
@@ -70,7 +73,7 @@ namespace AracKiralama.UI
             {
                 txtNewPassword.Clear();
                 txtNewPasswordRepeat.Clear();
-                Prompts.Inform("Şifre başarıyla değiştirildi.");
+                Prompts.Inform(ChangedMessage);
                 Close();
             }
         }
