@@ -16,6 +16,9 @@ public interface IUserRepository
     /// </summary>
     Task<UserRole?> GetRoleAsync(int userId, CancellationToken cancellationToken = default);
 
+    /// <summary>The account's stored name, contact data and role, or <see langword="null"/> when it does not exist.</summary>
+    Task<UserSummary?> GetSummaryAsync(int userId, CancellationToken cancellationToken = default);
+
     /// <summary>Every account, ordered by id, without passwords.</summary>
     Task<IReadOnlyList<UserSummary>> GetAllAsync(CancellationToken cancellationToken = default);
 

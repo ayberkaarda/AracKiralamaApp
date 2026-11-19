@@ -46,7 +46,7 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
             throw new BusinessRuleException(AccountRules.AllFieldsRequired);
         }
 
-        var (name, email, phone) = Validate(input, existing: false);
+        var (name, email, phone) = Validate(input, stored: null);
         AccountRules.RequireValidPassword(input.Password);
         await RequireFreeAsync(name, email, phone, null, cancellationToken).ConfigureAwait(false);
 
@@ -76,7 +76,9 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
         ArgumentNullException.ThrowIfNull(input);
 
-        var (name, email, phone) = Validate(input, existing: true);
+        var stored = await users.GetSummaryAsync(userId, cancellationToken).ConfigureAwait(false)
+            ?? throw new BusinessRuleException(NotFound);
+        var (name, email, phone) = Validate(input, stored);
         string? newHash = null;
         if (!string.IsNullOrEmpty(input.Password))
         {
@@ -130,10 +132,12 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
     /// <summary>
     /// The account form's values. E-mail and phone may be left empty: accounts of the original
     /// application may have neither, and the upgrade keeps them empty, so an admin can still change such
-    /// an account (for example set a new password). A new name follows the sign-up rules; an existing
-    /// account may keep the name it has, as long as it fits the column.
+    /// an account (for example set a new password). Every value of a new account follows the rules. An
+    /// existing account (<paramref name="stored"/>) keeps a name, e-mail or phone of the original data
+    /// that the rules would refuse as long as the form sends it unchanged; a changed value follows the
+    /// rules.
     /// </summary>
-    private static (string Name, string? Email, string? Phone) Validate(AccountInput input, bool existing)
+    private static (string Name, string? Email, string? Phone) Validate(AccountInput input, UserSummary? stored)
     {
         var name = input.UserName?.Trim();
         if (string.IsNullOrEmpty(name) || !Enum.IsDefined(input.Role))
@@ -141,16 +145,28 @@ internal sealed class AccountService(IUserRepository users, IPasswordHasher pass
             throw new BusinessRuleException(AccountRules.AllFieldsRequired);
         }
 
-        if (!existing || name.Length > InputRules.StoredUserNameMaxLength || name.Any(char.IsControl))
+        if (Unchanged(name, stored?.UserName) is { } storedName)
+        {
+            name = storedName;
+        }
+        else
         {
             // Admins may give any name the rules allow, also the one the sign-up form keeps.
             AccountRules.RequireValidUserName(name, allowReserved: true);
         }
 
-        var email = string.IsNullOrWhiteSpace(input.Email) ? null : AccountRules.RequireValidEmail(input.Email);
-        var phone = string.IsNullOrWhiteSpace(input.Phone) ? null : AccountRules.RequireValidPhone(input.Phone);
+        var email = string.IsNullOrWhiteSpace(input.Email)
+            ? null
+            : Unchanged(input.Email, stored?.Email) ?? AccountRules.RequireValidEmail(input.Email);
+        var phone = string.IsNullOrWhiteSpace(input.Phone)
+            ? null
+            : Unchanged(input.Phone, stored?.Phone) ?? AccountRules.RequireValidPhone(input.Phone);
         return (name, email, phone);
     }
+
+    /// <summary>The stored value when <paramref name="value"/> is the same text (apart from surrounding spaces), otherwise <see langword="null"/>.</summary>
+    private static string? Unchanged(string value, string? stored) =>
+        stored is not null && string.Equals(value.Trim(), stored.Trim(), StringComparison.Ordinal) ? stored : null;
 
     private async Task RequireFreeAsync(string name, string? email, string? phone, int? exceptUserId, CancellationToken cancellationToken)
     {

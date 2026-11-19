@@ -86,7 +86,7 @@ internal sealed class CarService(ICarRepository cars, AccessGuard access, TimePr
     public async Task<int> AddAsync(UserSession session, CarInput input, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
-        var car = Validate(input);
+        var car = Validate(input, stored: null);
         try
         {
             var id = await access.WriteAsActorAsync(session, () => cars.AddAsync(session.UserId, car, cancellationToken)).ConfigureAwait(false);
@@ -102,7 +102,9 @@ internal sealed class CarService(ICarRepository cars, AccessGuard access, TimePr
     public async Task UpdateAsync(UserSession session, int carId, CarInput input, CancellationToken cancellationToken = default)
     {
         await access.RequireAdminAsync(session, cancellationToken).ConfigureAwait(false);
-        var car = Validate(input);
+        var stored = await cars.FindAsync(carId, cancellationToken).ConfigureAwait(false)
+            ?? throw new BusinessRuleException(NotFound);
+        var car = Validate(input, stored);
         car.Id = carId;
 
         CarUpdateOutcome outcome;
@@ -144,9 +146,11 @@ internal sealed class CarService(ICarRepository cars, AccessGuard access, TimePr
 
     /// <summary>
     /// Checks every field of <paramref name="input"/> and collects one message per invalid field, as the
-    /// original form marked each empty field; nothing is stored unless all are valid.
+    /// original form marked each empty field; nothing is stored unless all are valid. A change of a
+    /// <paramref name="stored"/> car keeps a gearbox or fuel type of the original data that is in
+    /// neither list as long as the form sends it unchanged.
     /// </summary>
-    private Car Validate(CarInput input)
+    private Car Validate(CarInput input, Car? stored)
     {
         ArgumentNullException.ThrowIfNull(input);
 
@@ -154,8 +158,8 @@ internal sealed class CarService(ICarRepository cars, AccessGuard access, TimePr
         var brand = Text(input.Brand, nameof(CarInput.Brand), "Marka", InputRules.BrandMaxLength, errors);
         var model = Text(input.Model, nameof(CarInput.Model), "Model", InputRules.ModelMaxLength, errors);
         var color = Text(input.Color, nameof(CarInput.Color), "Renk", InputRules.ColorMaxLength, errors);
-        var transmission = Choice(input.Transmission, nameof(CarInput.Transmission), "Vites tipi", InputRules.Transmissions, errors);
-        var fuelType = Choice(input.FuelType, nameof(CarInput.FuelType), "Yakıt tipi", InputRules.FuelTypes, errors);
+        var transmission = Choice(input.Transmission, nameof(CarInput.Transmission), "Vites tipi", InputRules.Transmissions, stored?.Transmission, errors);
+        var fuelType = Choice(input.FuelType, nameof(CarInput.FuelType), "Yakıt tipi", InputRules.FuelTypes, stored?.FuelType, errors);
 
         var maxYear = timeProvider.Today().Year + 1;
         var year = Number(input.Year, nameof(CarInput.Year), "Yıl", InputRules.MinYear, maxYear, errors);
@@ -228,13 +232,18 @@ internal sealed class CarService(ICarRepository cars, AccessGuard access, TimePr
         return text;
     }
 
-    private static string? Choice(string? value, string field, string label, IReadOnlyList<string> allowed, Dictionary<string, string> errors)
+    private static string? Choice(string? value, string field, string label, IReadOnlyList<string> allowed, string? unchanged, Dictionary<string, string> errors)
     {
         var text = value?.Trim();
         if (string.IsNullOrEmpty(text))
         {
             errors[field] = label + " boş bırakılamaz.";
             return null;
+        }
+
+        if (unchanged is not null && string.Equals(text, unchanged.Trim(), StringComparison.Ordinal))
+        {
+            return unchanged;
         }
 
         var match = allowed.FirstOrDefault(a => string.Equals(a, text, StringComparison.Ordinal));

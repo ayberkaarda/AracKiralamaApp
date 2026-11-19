@@ -44,6 +44,17 @@ internal sealed class UserRepository(IDbContextFactory<AracDbContext> contextFac
             .ConfigureAwait(false);
     }
 
+    public async Task<UserSummary?> GetSummaryAsync(int userId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await db.Users
+            .AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => new UserSummary(u.Id, u.UserName, u.Email, u.Phone, u.Role))
+            .SingleOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<UserSummary>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);

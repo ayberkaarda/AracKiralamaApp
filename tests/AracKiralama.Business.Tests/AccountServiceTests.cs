@@ -1,5 +1,6 @@
 using AracKiralama.Business.Security;
 using AracKiralama.Business.Services;
+using AracKiralama.Business.Validation;
 using AracKiralama.Domain.Entities;
 using AracKiralama.Domain.Repositories;
 using Moq;
@@ -15,6 +16,10 @@ public sealed class AccountServiceTests
     public AccountServiceTests()
     {
         _users.Setup(u => u.GetRoleAsync(Sessions.Admin.UserId, It.IsAny<CancellationToken>())).ReturnsAsync(UserRole.Admin);
+
+        // By default the stored account has the values of Valid.
+        _users.Setup(u => u.GetSummaryAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int id, CancellationToken _) => new UserSummary(id, "yeni", "yeni@example.com", "5550000009", UserRole.User));
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -80,6 +85,7 @@ public sealed class AccountServiceTests
     public async Task Update_LegacyAccountWithoutContactData_CanGetANewPassword()
     {
         string? hash = null;
+        Stored(6, "eski kullanici", null, null);
         _users.Setup(u => u.FindTakenAsync("eski kullanici", null, null, 6, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
         _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.Is<AccountUpdate>(a => a.UserId == 6 && a.Email == null && a.Phone == null), It.IsAny<CancellationToken>()))
             .Callback<int, AccountUpdate, CancellationToken>((_, update, _) => hash = update.NewPasswordHash)
@@ -88,6 +94,63 @@ public sealed class AccountServiceTests
         await Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski kullanici", "Yeni.Sifre12", " ", "", UserRole.User), Ct);
 
         Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Yeni.Sifre12", hash!, PasswordFormat.Pbkdf2));
+    }
+
+    /// <summary>
+    /// A value of the original data that the rules would refuse, such as a phone with brackets or an
+    /// e-mail address with two @, is kept when the admin leaves it as it is, so the account can still
+    /// get a new password. A changed value follows the rules.
+    /// </summary>
+    [Fact]
+    public async Task Update_LegacyAccountWithMalformedContactData_CanGetANewPasswordWhenTheyAreUnchanged()
+    {
+        AccountUpdate? sent = null;
+        Stored(6, "eski", "eski@@ornek", "(555)1234567");
+        _users.Setup(u => u.FindTakenAsync("eski", "eski@@ornek", "(555)1234567", 6, It.IsAny<CancellationToken>())).ReturnsAsync(AccountFields.None);
+        _users.Setup(u => u.UpdateAsync(Sessions.Admin.UserId, It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()))
+            .Callback<int, AccountUpdate, CancellationToken>((_, update, _) => sent = update)
+            .ReturnsAsync(AccountUpdateOutcome.Updated);
+
+        await Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski", "Yeni.Sifre12", "eski@@ornek", "(555)1234567", UserRole.User), Ct);
+
+        Assert.NotNull(sent);
+        Assert.Equal("(555)1234567", sent.Phone);
+        Assert.Equal("eski@@ornek", sent.Email);
+        Assert.Equal(PasswordVerificationResult.Success, _hasher.Verify("Yeni.Sifre12", sent.NewPasswordHash!, PasswordFormat.Pbkdf2));
+
+        var phone = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski", null, "eski@@ornek", "(555)123456", UserRole.User), Ct));
+        var email = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => Service().UpdateAsync(Sessions.Admin, 6, new AccountInput("eski", null, "yeni@@ornek", "(555)1234567", UserRole.User), Ct));
+        Assert.Equal(AccountRules.PhoneInvalid, phone.Message);
+        Assert.Equal(AccountRules.EmailInvalid, email.Message);
+        _users.Verify(u => u.UpdateAsync(It.IsAny<int>(), It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>An account may keep a name of the original data, but a new name follows the rules.</summary>
+    [Theory]
+    [InlineData("a")]
+    [InlineData("ali veli")]
+    [InlineData("eski  kullanici")]
+    public async Task Update_RenameToAnInvalidName_IsRefused(string newName)
+    {
+        Stored(6, "eski kullanici", null, null);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => Service().UpdateAsync(Sessions.Admin, 6, new AccountInput(newName, null, null, null, UserRole.User), Ct));
+
+        Assert.Equal(AccountRules.UserNameInvalid, error.Message);
+        _users.Verify(u => u.UpdateAsync(It.IsAny<int>(), It.IsAny<AccountUpdate>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Update_MissingAccount_IsNotFound()
+    {
+        _users.Setup(u => u.GetSummaryAsync(9, It.IsAny<CancellationToken>())).ReturnsAsync((UserSummary?)null);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 9, Valid, Ct));
+
+        Assert.Equal(AccountService.NotFound, error.Message);
     }
 
     [Fact]
@@ -163,6 +226,9 @@ public sealed class AccountServiceTests
 
         AssertOnlyRoleChecks();
     }
+
+    private void Stored(int id, string name, string? email, string? phone, UserRole role = UserRole.User) =>
+        _users.Setup(u => u.GetSummaryAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new UserSummary(id, name, email, phone, role));
 
     private void AssertOnlyRoleChecks()
     {

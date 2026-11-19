@@ -162,6 +162,41 @@ public sealed class CarServiceTests
         Assert.Empty(_audit.Entries);
     }
 
+    /// <summary>
+    /// A gearbox or fuel type of the original data that is not in the lists is kept when the admin
+    /// leaves it as it is, so the car can still be changed (for example taken off the list). A changed
+    /// value must be one of the lists.
+    /// </summary>
+    [Fact]
+    public async Task Update_LegacyGearboxAndFuelKeptUnchanged_AreAccepted()
+    {
+        Car? sent = null;
+        _cars.Setup(c => c.FindAsync(3, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Car { Id = 3, Brand = "Anka", Model = "Kent", Transmission = "Manual", FuelType = "Benzinli", Plate = "00 DMO 001", DailyPrice = 850.5m });
+        _cars.Setup(c => c.UpdateAsync(Sessions.Admin.UserId, It.IsAny<Car>(), It.IsAny<CancellationToken>()))
+            .Callback<int, Car, CancellationToken>((_, car, _) => sent = car)
+            .ReturnsAsync(CarUpdateOutcome.Updated);
+
+        await Service().UpdateAsync(Sessions.Admin, 3, Valid with { Transmission = "Manual", FuelType = "Benzinli", IsListed = false }, Ct);
+
+        Assert.NotNull(sent);
+        Assert.Equal(("Manual", "Benzinli", false), (sent.Transmission, sent.FuelType, sent.IsListed));
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(
+            () => Service().UpdateAsync(Sessions.Admin, 3, Valid with { Transmission = "Yarı Otomatik", FuelType = "Benzinli" }, Ct));
+        Assert.Equal([nameof(CarInput.Transmission)], error.FieldErrors.Keys);
+    }
+
+    [Fact]
+    public async Task Update_MissingCar_IsNotFound()
+    {
+        _cars.Setup(c => c.FindAsync(3, It.IsAny<CancellationToken>())).ReturnsAsync((Car?)null);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => Service().UpdateAsync(Sessions.Admin, 3, Valid, Ct));
+
+        Assert.Equal(CarService.NotFound, error.Message);
+    }
+
     [Fact]
     public async Task Delete_CarWithRentals_IsRefused()
     {
