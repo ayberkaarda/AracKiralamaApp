@@ -97,33 +97,36 @@ internal sealed class CardGrid : Panel, ISelfScrolling, IThemeAware
 
     protected override void OnLayout(LayoutEventArgs levent)
     {
-        base.OnLayout(levent);
-        if (_arranging)
+        if (!_arranging)
         {
-            return;
-        }
-
-        _arranging = true;
-        try
-        {
-            // A scroll bar that appears takes width, so the cards are arranged again until the range holds still.
-            for (var pass = 0; pass < 3; pass++)
+            _arranging = true;
+            try
             {
-                var height = Arrange();
-                var minimum = height > ClientSize.Height ? new Size(0, height) : Size.Empty;
-                if (AutoScrollMinSize == minimum)
+                // The cards are placed for the width that is left once a vertical scroll bar is needed, so no
+                // horizontal bar ever appears; the scroll range is set before the panel lays out its scroll bars.
+                var full = Width - BorderWidth();
+                var height = Arrange(full);
+                if (height > Height - BorderWidth())
                 {
-                    break;
+                    height = Arrange(full - SystemInformation.VerticalScrollBarWidth);
                 }
 
-                AutoScrollMinSize = minimum;
+                var minimum = new Size(0, height);
+                if (AutoScrollMinSize != minimum)
+                {
+                    AutoScrollMinSize = minimum;
+                }
+            }
+            finally
+            {
+                _arranging = false;
             }
         }
-        finally
-        {
-            _arranging = false;
-        }
+
+        base.OnLayout(levent);
     }
+
+    private int BorderWidth() => BorderStyle == BorderStyle.None ? 0 : 2 * SystemInformation.BorderSize.Width;
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -155,11 +158,11 @@ internal sealed class CardGrid : Panel, ISelfScrolling, IThemeAware
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
     }
 
-    /// <summary>Places the cards row by row; returns the height they need.</summary>
-    private int Arrange()
+    /// <summary>Places the cards row by row in <paramref name="available"/> pixels of width; returns the height they need.</summary>
+    private int Arrange(int available)
     {
         var gap = Theme.Px(this, Spacing.L);
-        var width = Math.Max(1, ClientSize.Width);
+        var width = Math.Max(1, available);
         var columns = Math.Max(1, (width + gap) / (Theme.Px(this, MinCardWidth) + gap));
         var cards = Controls.Cast<Control>().ToList();
         columns = Math.Max(1, Math.Min(columns, Math.Max(1, cards.Count)));
